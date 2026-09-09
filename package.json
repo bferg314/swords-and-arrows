@@ -18,7 +18,7 @@
   },
   "build": {
     "appId": "com.swordsandarrows.game",
-    "productName": "Swords & Arrows",
+    "productName": "Swords and Arrows",
     "directories": {
       "output": "release"
     },
