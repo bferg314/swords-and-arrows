@@ -31,7 +31,7 @@
   - Adaptive AI Bot players (Easy, Medium, Hard) for solo or co-op play.
 - **💻 Desktop Binaries & Web App**:
   - Runs natively in any modern web browser.
-  - Packaged for Windows (`.exe` installer & portable), macOS (`.dmg` & `.zip`), and Linux (`.AppImage` & `.deb`) using Electron and GitHub Actions CI.
+  - Pre-built binary packages for Windows (`.exe` installer & portable), macOS (`.dmg` & `.zip`), and Linux (`.AppImage` & `.deb`) are automatically built via GitHub Actions and published to [GitHub Releases](https://github.com/bferg314/swords-and-arrows/releases).
 
 ---
 
