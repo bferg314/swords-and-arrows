@@ -1,7 +1,7 @@
 import { Player } from '../entities/Player';
 import { InputManager } from '../core/InputManager';
 
-export type ActiveScreenType = 'title' | 'lobby' | 'maps' | 'controls' | 'codex' | 'draft' | 'podium' | 'game';
+export type ActiveScreenType = 'title' | 'lobby' | 'maps' | 'controls' | 'codex' | 'draft' | 'podium' | 'game' | 'pause';
 
 export class GamepadNavigator {
   private currentScreen: ActiveScreenType = 'title';
@@ -9,17 +9,22 @@ export class GamepadNavigator {
   private inputManager: InputManager | null = null;
   private lastActiveGamepadIndex: number | null = null;
 
+  public onTogglePauseRequested?: () => void;
+
   // Navigation state per screen
   private titleIndex: number = 0;
   private lobbySlotIndex: number = 0;  // 0: P1, 1: P2, 2: P3, 3: P4
-  private lobbySubIndex: number = 0;   // 0: Type/Slot, 1: Color
+  private lobbySubIndex: number = 1;   // 0: Toggle (+ ADD / ✕ REMOVE), 1: Type, 2: Color
   private lobbyOnBottomBar: boolean = false;
   private lobbyBottomIndex: number = 1; // 0: Back, 1: Fight
+  private lobbyOnRulesBar: boolean = false;
+  private lobbyRulesIndex: number = 0;  // 0: Target Wins, 1: Round HP
   private mapGridIndex: number = 0;
   private mapOnBottomBar: boolean = false;
   private mapBottomIndex: number = 1;  // 0: Back, 1: Confirm
   private draftCardIndex: number = 0;
   private podiumButtonIndex: number = 0;
+  private pauseButtonIndex: number = 0;
 
   // Input repeat timing
   private moveCooldown: number = 0;
@@ -31,11 +36,74 @@ export class GamepadNavigator {
   private currentFocusedElement: HTMLElement | null = null;
   private promptBar: HTMLElement | null = null;
 
+  public getTitleButtons(): HTMLElement[] {
+    const btns = [
+      document.getElementById('btn-start-game'),
+      document.getElementById('btn-show-maps'),
+      document.getElementById('btn-show-controls'),
+      document.getElementById('btn-show-powerups'),
+      document.getElementById('btn-exit-game')
+    ].filter((el): el is HTMLElement => !!el && !el.classList.contains('hidden') && el.style.display !== 'none');
+    return btns;
+  }
+
+  public getPodiumButtons(): HTMLElement[] {
+    const btns = [
+      document.getElementById('btn-rematch'),
+      document.getElementById('btn-change-map'),
+      document.getElementById('btn-main-menu'),
+      document.getElementById('btn-podium-exit')
+    ].filter((el): el is HTMLElement => !!el && !el.classList.contains('hidden') && el.style.display !== 'none');
+    return btns;
+  }
+
+  public getPauseButtons(): HTMLElement[] {
+    const btns = [
+      document.getElementById('btn-pause-resume'),
+      document.getElementById('btn-pause-restart'),
+      document.getElementById('btn-pause-menu'),
+      document.getElementById('btn-pause-exit')
+    ].filter((el): el is HTMLElement => !!el && !el.classList.contains('hidden') && el.style.display !== 'none');
+    return btns;
+  }
+
+  public isSlotActive(slot: number): boolean {
+    if (slot === 0 || slot === 1) return true;
+    const slotElem = document.getElementById(`slot-p${slot + 1}`);
+    return slotElem?.classList.contains('active') ?? false;
+  }
+
+  public hasSlotToggle(slot: number): boolean {
+    return slot === 2 || slot === 3;
+  }
+
+  public getTopSubIndexForSlot(slot: number): number {
+    return this.hasSlotToggle(slot) ? 0 : 1;
+  }
+
+  public getBottomSubIndexForSlot(slot: number): number {
+    return this.isSlotActive(slot) ? 2 : 0;
+  }
+
+  private isMouseActive: boolean = false;
+
+  public setMouseActive(active: boolean): void {
+    if (this.isMouseActive === active && document.body.classList.contains('non-mouse-active') === !active) return;
+    this.isMouseActive = active;
+    if (active) {
+      document.body.classList.remove('non-mouse-active');
+    } else {
+      document.body.classList.add('non-mouse-active');
+    }
+  }
+
   constructor(inputManager?: InputManager) {
     this.inputManager = inputManager || null;
     this.createPromptBar();
     this.initKeyboardListeners();
+    this.initMouseListeners();
     this.initGamepadEvents();
+    this.setMouseActive(false);
   }
 
   public setDraftingPlayer(player: Player | null): void {
@@ -117,8 +185,16 @@ export class GamepadNavigator {
 
   private initKeyboardListeners(): void {
     window.addEventListener('keydown', (e) => {
-      // If actively playing in arena combat, let Player.ts handle gameplay keys
-      if (this.currentScreen === 'game') return;
+      this.setMouseActive(false);
+
+      // If actively playing in arena combat, allow Escape to toggle pause
+      if (this.currentScreen === 'game') {
+        if (e.code === 'Escape') {
+          e.preventDefault();
+          this.onTogglePauseRequested?.();
+        }
+        return;
+      }
 
       // Draft Screen: ISOLATE strictly to drafting player's controls
       if (this.currentScreen === 'draft') {
@@ -167,6 +243,20 @@ export class GamepadNavigator {
         return;
       }
 
+      // Codex & Controls screens: Allow ArrowUp/ArrowDown/PageUp/PageDown to scroll
+      if (this.currentScreen === 'codex' || this.currentScreen === 'controls') {
+        const code = e.code;
+        if (code === 'ArrowUp' || code === 'KeyW' || code === 'PageUp') {
+          e.preventDefault();
+          this.scrollActiveContainer(-70);
+          return;
+        } else if (code === 'ArrowDown' || code === 'KeyS' || code === 'PageDown') {
+          e.preventDefault();
+          this.scrollActiveContainer(70);
+          return;
+        }
+      }
+
       // Other screens: title, lobby, maps, controls, codex, podium
       const code = e.code;
 
@@ -193,11 +283,35 @@ export class GamepadNavigator {
         this.handleDirectionMove(e.shiftKey ? -1 : 1, 0);
       }
     });
+  }
 
-    // Also listen to mouse hover on buttons/cards so focus ring updates seamlessly
+  private initMouseListeners(): void {
+    let lastMouseX = -1;
+    let lastMouseY = -1;
+
+    window.addEventListener('mousemove', (e) => {
+      if (lastMouseX === -1 && lastMouseY === -1) {
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        return;
+      }
+      const dist = Math.hypot(e.clientX - lastMouseX, e.clientY - lastMouseY);
+      if (dist > 3) {
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        this.setMouseActive(true);
+      }
+    });
+
+    window.addEventListener('mousedown', () => {
+      this.setMouseActive(true);
+    });
+
+    // Also listen to mouse hover on buttons/cards so focus ring updates seamlessly when mouse is active
     document.addEventListener('mouseover', (e) => {
       if (this.currentScreen === 'game') return;
-      const target = (e.target as HTMLElement).closest('.btn, .map-card, .draft-card, .slot-select, .color-swatch, .btn-toggle-slot') as HTMLElement;
+      if (!this.isMouseActive) return; // Completely ignore mouse hover when using controller or non-mouse!
+      const target = (e.target as HTMLElement).closest('.btn, .map-card, .draft-card, .slot-select, .rule-select, .color-swatch, .btn-toggle-slot') as HTMLElement;
       if (target && target !== this.currentFocusedElement) {
         if (this.currentScreen === 'draft') {
           if (!this.draftingPlayer || this.draftingPlayer.isCpu) return;
@@ -208,6 +322,22 @@ export class GamepadNavigator {
           }
         }
         this.setFocusDirectly(target);
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      this.setMouseActive(true);
+      if (this.currentScreen === 'maps') {
+        const card = (e.target as HTMLElement).closest('.map-card') as HTMLElement;
+        if (card) {
+          const cards = Array.from(document.querySelectorAll('.map-card'));
+          const idx = cards.indexOf(card);
+          if (idx !== -1) {
+            this.mapGridIndex = idx;
+            this.mapOnBottomBar = false;
+            this.applyFocus();
+          }
+        }
       }
     });
   }
@@ -251,6 +381,9 @@ export class GamepadNavigator {
   public setScreen(screen: ActiveScreenType): void {
     this.currentScreen = screen;
     this.clearFocus();
+    if (!this.isMouseActive) {
+      document.body.classList.add('non-mouse-active');
+    }
 
     if (screen === 'game') {
       if (this.promptBar) {
@@ -259,6 +392,7 @@ export class GamepadNavigator {
         this.promptBar.innerHTML = '';
       }
       this.podiumButtonIndex = 0;
+      this.pauseButtonIndex = 0;
       this.moveCooldown = 0.3;
       this.moveRepeatTimer = 0;
     } else {
@@ -269,13 +403,62 @@ export class GamepadNavigator {
       if (screen === 'podium') {
         this.podiumButtonIndex = 0;
       }
+      if (screen === 'pause') {
+        this.pauseButtonIndex = 0;
+      }
+      if (screen === 'maps') {
+        const grid = document.getElementById('maps-grid') || document.querySelector('.maps-grid-container');
+        if (grid) grid.scrollTop = 0;
+      }
+      if (screen === 'codex') {
+        const codex = document.getElementById('codex-container') || document.querySelector('.codex-container');
+        if (codex) codex.scrollTop = 0;
+      }
+      if (screen === 'controls') {
+        const modal = document.querySelector('#controls-screen .modal-card');
+        if (modal) modal.scrollTop = 0;
+      }
+      if (screen === 'lobby') {
+        this.lobbyOnRulesBar = false;
+        this.lobbyOnBottomBar = false;
+      }
       this.updatePromptBar();
       this.applyFocus();
     }
   }
 
+  public scrollActiveContainer(deltaPx: number): void {
+    let container: HTMLElement | null = null;
+    if (this.currentScreen === 'maps') {
+      container = document.getElementById('maps-grid') || document.querySelector('.maps-grid-container');
+    } else if (this.currentScreen === 'codex') {
+      container = document.getElementById('codex-container') || document.querySelector('.codex-container');
+    } else if (this.currentScreen === 'controls') {
+      container = document.querySelector('#controls-screen .modal-card');
+    }
+
+    if (container) {
+      container.scrollBy({ top: deltaPx, behavior: 'auto' });
+    }
+  }
+
   public update(dt: number): void {
-    if (this.currentScreen === 'game') return;
+    if (this.currentScreen === 'game') {
+      // Check if START button was pressed on any gamepad to pause during battle
+      const rawGamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+      let btnStart = false;
+      for (let i = 0; i < rawGamepads.length; i++) {
+        const gp = rawGamepads[i];
+        if (!gp || !gp.connected) continue;
+        const pStart = (gp.buttons[9]?.pressed ?? false) || (gp.buttons[8]?.pressed ?? false);
+        if (pStart) btnStart = true;
+      }
+      if (btnStart && !this.prevButtons[9]) {
+        this.onTogglePauseRequested?.();
+      }
+      this.prevButtons[9] = btnStart;
+      return;
+    }
 
     if (this.currentScreen === 'draft') {
       this.updateDraftGamepad(dt);
@@ -286,6 +469,7 @@ export class GamepadNavigator {
     const rawGamepads = navigator.getGamepads ? navigator.getGamepads() : [];
     let aggregatedStickX = 0;
     let aggregatedStickY = 0;
+    let aggregatedRightStickY = 0;
     let dpadUp = false;
     let dpadDown = false;
     let dpadLeft = false;
@@ -311,6 +495,15 @@ export class GamepadNavigator {
       if (Math.abs(sx) > deadzone) aggregatedStickX = sx;
       if (Math.abs(sy) > deadzone) aggregatedStickY = sy;
 
+      // Right Stick (axes[2], axes[3])
+      const rx = (gp.axes.length >= 3 ? gp.axes[2] : 0) || 0;
+      const ry = (gp.axes.length >= 4 ? gp.axes[3] : 0) || 0;
+      const rightDeadzone = 0.15;
+      const hasRightStick = Math.abs(rx) > rightDeadzone || Math.abs(ry) > rightDeadzone;
+      if (Math.abs(ry) > rightDeadzone && Math.abs(ry) > Math.abs(aggregatedRightStickY)) {
+        aggregatedRightStickY = ry;
+      }
+
       const pUp = gp.buttons[12]?.pressed ?? false;
       const pDown = gp.buttons[13]?.pressed ?? false;
       const pLeft = gp.buttons[14]?.pressed ?? false;
@@ -334,7 +527,8 @@ export class GamepadNavigator {
       if (pStart) btnStart = true;
 
       // Track active gamepad input
-      if (hasStick || pUp || pDown || pLeft || pRight || pA || pB || pX || pY || pStart) {
+      if (hasStick || hasRightStick || pUp || pDown || pLeft || pRight || pA || pB || pX || pY || pStart) {
+        this.setMouseActive(false);
         this.lastActiveGamepadIndex = gp.index;
         this.inputManager?.setPrimaryGamepadIndex(gp.index);
         this.inputManager?.bindPlayerGamepad(0, gp.index);
@@ -346,6 +540,19 @@ export class GamepadNavigator {
         || rawGamepads.find(g => g && g.connected)
         || null;
       this.updateStatusBar(activeGp);
+
+      // Right stick analog scrolling for Power Up Codex and Arena Selection
+      if (this.currentScreen === 'maps' || this.currentScreen === 'codex' || this.currentScreen === 'controls') {
+        const rightDeadzone = 0.15;
+        if (Math.abs(aggregatedRightStickY) > rightDeadzone) {
+          const sign = Math.sign(aggregatedRightStickY);
+          const norm = (Math.abs(aggregatedRightStickY) - rightDeadzone) / (1 - rightDeadzone);
+          const curved = Math.pow(norm, 1.35);
+          const scrollSpeed = 850; // px per second at full deflection
+          const delta = sign * curved * scrollSpeed * dt;
+          this.scrollActiveContainer(delta);
+        }
+      }
 
       const up = dpadUp || aggregatedStickY < -0.45;
       const down = dpadDown || aggregatedStickY > 0.45;
@@ -440,43 +647,110 @@ export class GamepadNavigator {
       this.handleButtonA();
     }
     this.prevGamepadConfirm.set(gp.index, isConfirm);
+
+    if (moveDirX !== 0 || (isConfirm && !prevConfirm)) {
+      this.setMouseActive(false);
+    }
   }
 
   public handleDirectionMove(dx: number, dy: number): void {
     if (this.currentScreen === 'title') {
       if (dy !== 0) {
-        const count = 4;
+        const btns = this.getTitleButtons();
+        const count = btns.length || 4;
         this.titleIndex = (this.titleIndex + dy + count) % count;
         this.applyFocus();
       }
+    } else if (this.currentScreen === 'pause') {
+      if (dy !== 0) {
+        const btns = this.getPauseButtons();
+        const count = btns.length || 3;
+        this.pauseButtonIndex = (this.pauseButtonIndex + dy + count) % count;
+        this.applyFocus();
+      }
     } else if (this.currentScreen === 'lobby') {
-      if (this.lobbyOnBottomBar) {
+      if (this.lobbyOnRulesBar) {
+        if (dy > 0) {
+          // Move down back to player slots
+          this.lobbyOnRulesBar = false;
+          this.lobbySubIndex = this.getTopSubIndexForSlot(this.lobbySlotIndex);
+          this.applyFocus();
+        } else if (dx !== 0) {
+          this.lobbyRulesIndex = this.lobbyRulesIndex === 0 ? 1 : 0;
+          this.applyFocus();
+        }
+      } else if (this.lobbyOnBottomBar) {
         if (dy < 0) {
           // Move up back to player slots
           this.lobbyOnBottomBar = false;
+          this.lobbySubIndex = this.getBottomSubIndexForSlot(this.lobbySlotIndex);
           this.applyFocus();
         } else if (dx !== 0) {
           this.lobbyBottomIndex = this.lobbyBottomIndex === 0 ? 1 : 0;
           this.applyFocus();
         }
       } else {
+        const slot = this.lobbySlotIndex;
+        const active = this.isSlotActive(slot);
+        const hasToggle = this.hasSlotToggle(slot);
+
         if (dy > 0) {
-          if (this.lobbySubIndex === 0) {
-            this.lobbySubIndex = 1;
-            this.applyFocus();
-          } else {
-            // Move down to bottom bar
+          // Moving DOWN
+          if (!active) {
+            // Inactive slot only has toggle (0) -> go to bottom bar
             this.lobbyOnBottomBar = true;
             this.applyFocus();
+          } else {
+            // Active slot: Row 0 (Toggle) -> Row 1 (Type) -> Row 2 (Color) -> Bottom Bar
+            if (this.lobbySubIndex === 0) {
+              this.lobbySubIndex = 1;
+              this.applyFocus();
+            } else if (this.lobbySubIndex === 1) {
+              this.lobbySubIndex = 2;
+              this.applyFocus();
+            } else {
+              this.lobbyOnBottomBar = true;
+              this.applyFocus();
+            }
           }
         } else if (dy < 0) {
-          if (this.lobbySubIndex === 1) {
-            this.lobbySubIndex = 0;
+          // Moving UP
+          if (!active) {
+            // Inactive slot only has toggle (0) -> go to rules bar
+            this.lobbyOnRulesBar = true;
+            this.lobbyRulesIndex = this.lobbySlotIndex < 2 ? 0 : 1;
             this.applyFocus();
+          } else {
+            // Active slot: Row 2 (Color) -> Row 1 (Type) -> Row 0 (Toggle if present) -> Rules Bar
+            if (this.lobbySubIndex === 2) {
+              this.lobbySubIndex = 1;
+              this.applyFocus();
+            } else if (this.lobbySubIndex === 1) {
+              if (hasToggle) {
+                this.lobbySubIndex = 0;
+                this.applyFocus();
+              } else {
+                this.lobbyOnRulesBar = true;
+                this.lobbyRulesIndex = this.lobbySlotIndex < 2 ? 0 : 1;
+                this.applyFocus();
+              }
+            } else {
+              // From Row 0 (Toggle) up to Rules Bar
+              this.lobbyOnRulesBar = true;
+              this.lobbyRulesIndex = this.lobbySlotIndex < 2 ? 0 : 1;
+              this.applyFocus();
+            }
           }
         } else if (dx !== 0) {
           // Left / Right moves between player slots
           this.lobbySlotIndex = (this.lobbySlotIndex + dx + 4) % 4;
+          const nextActive = this.isSlotActive(this.lobbySlotIndex);
+          const nextHasToggle = this.hasSlotToggle(this.lobbySlotIndex);
+          if (!nextActive) {
+            this.lobbySubIndex = 0;
+          } else if (!nextHasToggle && this.lobbySubIndex === 0) {
+            this.lobbySubIndex = 1;
+          }
           this.applyFocus();
         }
       }
@@ -517,24 +791,40 @@ export class GamepadNavigator {
         this.applyFocus();
       }
     } else if (this.podiumButtonIndex !== undefined && this.currentScreen === 'podium') {
-      if (dx !== 0) {
-        this.podiumButtonIndex = (this.podiumButtonIndex + dx + 3) % 3;
+      const delta = dx !== 0 ? dx : dy;
+      if (delta !== 0) {
+        const btns = this.getPodiumButtons();
+        const count = btns.length || 3;
+        this.podiumButtonIndex = (this.podiumButtonIndex + delta + count) % count;
         this.applyFocus();
+      }
+    } else if (this.currentScreen === 'codex') {
+      if (dy !== 0) {
+        this.scrollActiveContainer(dy * 120);
+      }
+    } else if (this.currentScreen === 'controls') {
+      if (dy !== 0) {
+        this.scrollActiveContainer(dy * 120);
       }
     }
   }
 
   public handleButtonA(): void {
     if (this.currentScreen === 'title') {
-      const titleBtns = [
-        document.getElementById('btn-start-game'),
-        document.getElementById('btn-show-maps'),
-        document.getElementById('btn-show-controls'),
-        document.getElementById('btn-show-powerups')
-      ];
+      const titleBtns = this.getTitleButtons();
       titleBtns[this.titleIndex]?.click();
+    } else if (this.currentScreen === 'pause') {
+      const pauseBtns = this.getPauseButtons();
+      pauseBtns[this.pauseButtonIndex]?.click();
     } else if (this.currentScreen === 'lobby') {
-      if (this.lobbyOnBottomBar) {
+      if (this.lobbyOnRulesBar) {
+        const selectId = this.lobbyRulesIndex === 0 ? 'lobby-target-wins' : 'lobby-round-hp';
+        const select = document.getElementById(selectId) as HTMLSelectElement;
+        if (select) {
+          select.selectedIndex = (select.selectedIndex + 1) % select.options.length;
+          select.dispatchEvent(new Event('change'));
+        }
+      } else if (this.lobbyOnBottomBar) {
         if (this.lobbyBottomIndex === 0) {
           document.getElementById('btn-lobby-back')?.click();
         } else {
@@ -542,30 +832,33 @@ export class GamepadNavigator {
         }
       } else {
         const slot = this.lobbySlotIndex;
-        const slotElem = document.getElementById(`slot-p${slot + 1}`);
-        const isActive = slotElem?.classList.contains('active');
+        const isActive = this.isSlotActive(slot);
+        const hasToggle = this.hasSlotToggle(slot);
 
-        if (!isActive && (slot === 2 || slot === 3)) {
-          // Activate slot
-          document.getElementById(`toggle-p${slot + 1}`)?.click();
-          this.applyFocus();
+        if (!isActive || (this.lobbySubIndex === 0 && hasToggle)) {
+          if (hasToggle) {
+            // Toggle slot (+ ADD or ✕ REMOVE)
+            document.getElementById(`toggle-p${slot + 1}`)?.click();
+            this.applyFocus();
+          }
           return;
         }
 
-        if (this.lobbySubIndex === 0) {
+        if (this.lobbySubIndex === 0 || this.lobbySubIndex === 1) {
           // Cycle Type selector (Human, CPU Novice, CPU Skilled, CPU Deadly)
           const select = document.getElementById(`p${slot + 1}-type`) as HTMLSelectElement;
           if (select) {
             select.selectedIndex = (select.selectedIndex + 1) % select.options.length;
             select.dispatchEvent(new Event('change'));
           }
-        } else if (this.lobbySubIndex === 1) {
+        } else if (this.lobbySubIndex === 2) {
           // Cycle Color swatches
           const swatches = Array.from(document.querySelectorAll(`.color-swatch[data-player="${slot + 1}"]`)) as HTMLElement[];
           if (swatches.length > 0) {
             const activeIdx = swatches.findIndex(s => s.classList.contains('active'));
             const nextIdx = (activeIdx + 1) % swatches.length;
             swatches[nextIdx]?.click();
+            this.applyFocus();
           }
         }
       }
@@ -592,17 +885,15 @@ export class GamepadNavigator {
         selectedCard.click();
       }
     } else if (this.currentScreen === 'podium') {
-      const podiumBtns = [
-        document.getElementById('btn-rematch'),
-        document.getElementById('btn-change-map'),
-        document.getElementById('btn-main-menu')
-      ];
+      const podiumBtns = this.getPodiumButtons();
       podiumBtns[this.podiumButtonIndex]?.click();
     }
   }
 
   public handleButtonB(): void {
-    if (this.currentScreen === 'lobby') {
+    if (this.currentScreen === 'pause') {
+      this.onTogglePauseRequested?.();
+    } else if (this.currentScreen === 'lobby') {
       document.getElementById('btn-lobby-back')?.click();
     } else if (this.currentScreen === 'maps') {
       document.getElementById('btn-maps-back')?.click();
@@ -614,7 +905,9 @@ export class GamepadNavigator {
   }
 
   public handleButtonStart(): void {
-    if (this.currentScreen === 'title') {
+    if (this.currentScreen === 'pause') {
+      this.onTogglePauseRequested?.();
+    } else if (this.currentScreen === 'title') {
       document.getElementById('btn-start-game')?.click();
     } else if (this.currentScreen === 'lobby') {
       document.getElementById('btn-lobby-fight')?.click();
@@ -633,19 +926,65 @@ export class GamepadNavigator {
         <span><span class="gp-key">ENTER / A</span> Select</span>
         <span><span class="gp-key gp-start">START</span> Start</span>
       `;
-    } else if (this.currentScreen === 'lobby') {
+    } else if (this.currentScreen === 'pause') {
       this.promptBar.innerHTML = `
         <span><span class="gp-key">ARROWS / WASD</span> Navigate</span>
-        <span><span class="gp-key">ENTER / A</span> Change/Toggle</span>
-        <span><span class="gp-key gp-b">ESC / B</span> Back</span>
-        <span><span class="gp-key gp-start">START</span> Fight!</span>
+        <span><span class="gp-key">ENTER / A</span> Select</span>
+        <span><span class="gp-key gp-b">ESC / B / START</span> Resume</span>
       `;
+    } else if (this.currentScreen === 'lobby') {
+      if (this.lobbyOnRulesBar) {
+        this.promptBar.innerHTML = `
+          <span><span class="gp-key">← / →</span> Switch Rule</span>
+          <span><span class="gp-key">A / ENTER</span> Change Value</span>
+          <span><span class="gp-key">DOWN</span> Warriors</span>
+          <span><span class="gp-key gp-start">START</span> Fight!</span>
+        `;
+      } else if (this.lobbyOnBottomBar) {
+        this.promptBar.innerHTML = `
+          <span><span class="gp-key">← / →</span> Select Option</span>
+          <span><span class="gp-key">A / ENTER</span> Choose</span>
+          <span><span class="gp-key">UP</span> Warriors</span>
+          <span><span class="gp-key gp-start">START</span> Fight!</span>
+        `;
+      } else {
+        const slot = this.lobbySlotIndex;
+        const active = this.isSlotActive(slot);
+        let actionHint = 'Change/Toggle';
+        if (!active) {
+          actionHint = 'Add Player';
+        } else if (this.lobbySubIndex === 0 && this.hasSlotToggle(slot)) {
+          actionHint = 'Remove Player';
+        } else if (this.lobbySubIndex === 1) {
+          actionHint = 'Cycle Type';
+        } else if (this.lobbySubIndex === 2) {
+          actionHint = 'Cycle Color';
+        }
+
+        this.promptBar.innerHTML = `
+          <span><span class="gp-key">ARROWS / WASD</span> Navigate</span>
+          <span><span class="gp-key">A / ENTER</span> ${actionHint}</span>
+          <span><span class="gp-key gp-b">ESC / B</span> Back</span>
+          <span><span class="gp-key gp-start">START</span> Fight!</span>
+        `;
+      }
     } else if (this.currentScreen === 'maps') {
       this.promptBar.innerHTML = `
-        <span><span class="gp-key">ARROWS / WASD</span> Choose Arena</span>
+        <span><span class="gp-key">ARROWS / WASD</span> Choose</span>
+        <span><span class="gp-key gp-stick">RIGHT STICK</span> Scroll</span>
         <span><span class="gp-key">ENTER / A</span> Select</span>
         <span><span class="gp-key gp-b">ESC / B</span> Back</span>
         <span><span class="gp-key gp-start">START</span> Confirm</span>
+      `;
+    } else if (this.currentScreen === 'codex') {
+      this.promptBar.innerHTML = `
+        <span><span class="gp-key gp-stick">RIGHT STICK</span> Scroll Codex</span>
+        <span><span class="gp-key gp-b">ESC / B / ENTER</span> Close</span>
+      `;
+    } else if (this.currentScreen === 'controls') {
+      this.promptBar.innerHTML = `
+        <span><span class="gp-key gp-stick">RIGHT STICK</span> Scroll Guide</span>
+        <span><span class="gp-key gp-b">ESC / B / ENTER</span> Close</span>
       `;
     } else if (this.currentScreen === 'draft') {
       if (this.draftingPlayer) {
@@ -687,31 +1026,37 @@ export class GamepadNavigator {
     let target: HTMLElement | null = null;
 
     if (this.currentScreen === 'title') {
-      const titleBtns = [
-        document.getElementById('btn-start-game'),
-        document.getElementById('btn-show-maps'),
-        document.getElementById('btn-show-controls'),
-        document.getElementById('btn-show-powerups')
-      ];
+      const titleBtns = this.getTitleButtons();
       target = titleBtns[this.titleIndex] || null;
+    } else if (this.currentScreen === 'pause') {
+      const pauseBtns = this.getPauseButtons();
+      target = pauseBtns[this.pauseButtonIndex] || null;
     } else if (this.currentScreen === 'lobby') {
-      if (this.lobbyOnBottomBar) {
+      this.updatePromptBar();
+      if (this.lobbyOnRulesBar) {
+        target = this.lobbyRulesIndex === 0
+          ? document.getElementById('lobby-target-wins')
+          : document.getElementById('lobby-round-hp');
+      } else if (this.lobbyOnBottomBar) {
         target = this.lobbyBottomIndex === 0
           ? document.getElementById('btn-lobby-back')
           : document.getElementById('btn-lobby-fight');
       } else {
         const slot = this.lobbySlotIndex;
-        const slotElem = document.getElementById(`slot-p${slot + 1}`);
-        const isActive = slotElem?.classList.contains('active');
+        const active = this.isSlotActive(slot);
+        const hasToggle = this.hasSlotToggle(slot);
 
-        if (!isActive) {
+        if (!active) {
           target = document.getElementById(`toggle-p${slot + 1}`);
         } else {
-          if (this.lobbySubIndex === 0) {
+          if (this.lobbySubIndex === 0 && hasToggle) {
+            target = document.getElementById(`toggle-p${slot + 1}`);
+          } else if (this.lobbySubIndex === 1 || (!hasToggle && this.lobbySubIndex === 0)) {
             target = document.getElementById(`p${slot + 1}-type`);
           } else {
-            const swatches = document.querySelectorAll(`.color-swatch[data-player="${slot + 1}"]`);
-            target = (swatches[0] as HTMLElement) || slotElem;
+            const swatches = Array.from(document.querySelectorAll(`.color-swatch[data-player="${slot + 1}"]`)) as HTMLElement[];
+            const activeSwatch = swatches.find(s => s.classList.contains('active'));
+            target = activeSwatch || swatches[0] || document.getElementById(`slot-p${slot + 1}`);
           }
         }
       }
@@ -728,12 +1073,12 @@ export class GamepadNavigator {
       const draftCards = Array.from(document.querySelectorAll('.draft-card')) as HTMLElement[];
       target = draftCards[this.draftCardIndex] || null;
     } else if (this.currentScreen === 'podium') {
-      const podiumBtns = [
-        document.getElementById('btn-rematch'),
-        document.getElementById('btn-change-map'),
-        document.getElementById('btn-main-menu')
-      ];
+      const podiumBtns = this.getPodiumButtons();
       target = podiumBtns[this.podiumButtonIndex] || null;
+    } else if (this.currentScreen === 'codex') {
+      target = document.getElementById('btn-codex-close');
+    } else if (this.currentScreen === 'controls') {
+      target = document.getElementById('btn-controls-close');
     }
 
     if (target) {
@@ -743,7 +1088,9 @@ export class GamepadNavigator {
         target.style.boxShadow = `0 0 25px ${this.draftingPlayer.color}, 0 0 8px #fff`;
       }
       this.currentFocusedElement = target;
-      target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      if (this.currentScreen !== 'codex' && this.currentScreen !== 'controls') {
+        target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
     }
   }
 
@@ -753,6 +1100,62 @@ export class GamepadNavigator {
     if (this.currentScreen === 'draft' && this.draftingPlayer) {
       target.style.outlineColor = this.draftingPlayer.color;
       target.style.boxShadow = `0 0 25px ${this.draftingPlayer.color}, 0 0 8px #fff`;
+    }
+    if (this.currentScreen === 'title') {
+      const btns = this.getTitleButtons();
+      const idx = btns.indexOf(target);
+      if (idx !== -1) this.titleIndex = idx;
+    } else if (this.currentScreen === 'pause') {
+      const btns = this.getPauseButtons();
+      const idx = btns.indexOf(target);
+      if (idx !== -1) this.pauseButtonIndex = idx;
+    } else if (this.currentScreen === 'podium') {
+      const btns = this.getPodiumButtons();
+      const idx = btns.indexOf(target);
+      if (idx !== -1) this.podiumButtonIndex = idx;
+    } else if (target.id === 'lobby-target-wins') {
+      this.lobbyOnRulesBar = true;
+      this.lobbyRulesIndex = 0;
+      this.lobbyOnBottomBar = false;
+      this.updatePromptBar();
+    } else if (target.id === 'lobby-round-hp') {
+      this.lobbyOnRulesBar = true;
+      this.lobbyRulesIndex = 1;
+      this.lobbyOnBottomBar = false;
+      this.updatePromptBar();
+    } else if (target.id === 'btn-lobby-back') {
+      this.lobbyOnBottomBar = true;
+      this.lobbyBottomIndex = 0;
+      this.lobbyOnRulesBar = false;
+      this.updatePromptBar();
+    } else if (target.id === 'btn-lobby-fight') {
+      this.lobbyOnBottomBar = true;
+      this.lobbyBottomIndex = 1;
+      this.lobbyOnRulesBar = false;
+      this.updatePromptBar();
+    } else if (this.currentScreen === 'lobby') {
+      this.lobbyOnRulesBar = false;
+      this.lobbyOnBottomBar = false;
+      if (target.classList.contains('btn-toggle-slot')) {
+        const pMatch = target.id.match(/toggle-p(\d+)/);
+        if (pMatch) {
+          this.lobbySlotIndex = parseInt(pMatch[1]) - 1;
+          this.lobbySubIndex = 0;
+        }
+      } else if (target.classList.contains('slot-select')) {
+        const pMatch = target.id.match(/p(\d+)-type/);
+        if (pMatch) {
+          this.lobbySlotIndex = parseInt(pMatch[1]) - 1;
+          this.lobbySubIndex = 1;
+        }
+      } else if (target.classList.contains('color-swatch')) {
+        const pStr = target.getAttribute('data-player');
+        if (pStr) {
+          this.lobbySlotIndex = parseInt(pStr) - 1;
+          this.lobbySubIndex = 2;
+        }
+      }
+      this.updatePromptBar();
     }
     this.currentFocusedElement = target;
   }

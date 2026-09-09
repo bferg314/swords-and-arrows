@@ -95,6 +95,37 @@
         </div>
       </div>
 
+      <!-- In-Game Pause Screen Overlay -->
+      <div id="pause-screen" class="ui-layer hidden">
+        <div class="pause-card">
+          <div class="pause-header">
+            <span class="pause-icon">⏸️</span>
+            <h2 class="pause-title">GAME PAUSED</h2>
+          </div>
+          <div class="pause-actions">
+            <button id="btn-pause-resume" class="btn btn-primary glow-gold">
+              <span class="btn-icon">▶️</span>
+              <span class="btn-text">RESUME BATTLE</span>
+            </button>
+            <button id="btn-pause-restart" class="btn btn-secondary">
+              <span class="btn-icon">🔄</span>
+              <span class="btn-text">RESTART MATCH</span>
+            </button>
+            <button id="btn-pause-menu" class="btn btn-secondary">
+              <span class="btn-icon">🏰</span>
+              <span class="btn-text">MAIN MENU</span>
+            </button>
+            <button id="btn-pause-exit" class="btn btn-secondary btn-exit desktop-only hidden">
+              <span class="btn-icon">🚪</span>
+              <span class="btn-text">EXIT GAME</span>
+            </button>
+          </div>
+          <div class="pause-hint">
+            <span>Press <strong>ESC</strong> or Gamepad <strong>START</strong> to Resume</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Title Screen Layer -->
       <div id="title-screen" class="ui-layer">
         <div class="title-backdrop-glow"></div>
@@ -112,7 +143,7 @@
             </button>
             <button id="btn-show-maps" class="btn btn-secondary">
               <span class="btn-icon">🗺️</span>
-              <span class="btn-text">SELECT ARENA (12 MAPS)</span>
+              <span class="btn-text">ARENA SELECTION (16 MAPS)</span>
             </button>
             <button id="btn-show-controls" class="btn btn-secondary">
               <span class="btn-icon">🎮</span>
@@ -121,6 +152,10 @@
             <button id="btn-show-powerups" class="btn btn-secondary">
               <span class="btn-icon">✨</span>
               <span class="btn-text">POWER-UP CODEX (20 PERKS)</span>
+            </button>
+            <button id="btn-exit-game" class="btn btn-secondary btn-exit desktop-only hidden">
+              <span class="btn-icon">🚪</span>
+              <span class="btn-text">EXIT GAME</span>
             </button>
           </div>
 
@@ -135,9 +170,29 @@
       <div id="lobby-screen" class="ui-layer hidden">
         <div class="screen-header">
           <h2>WARRIOR LOBBY</h2>
-          <div class="lobby-meta-pill">
-            <span>Target: <strong>3 Wins</strong></span> • 
-            <span>Round HP: <strong>3 Hearts</strong></span>
+          <div class="lobby-rules-bar">
+            <div class="lobby-rule-item">
+              <label for="lobby-target-wins">TARGET WINS:</label>
+              <select id="lobby-target-wins" class="rule-select">
+                <option value="1">1 Win (Sudden Death)</option>
+                <option value="2">2 Wins (Quick Duel)</option>
+                <option value="3" selected>3 Wins (Standard)</option>
+                <option value="5">5 Wins (Extended)</option>
+                <option value="7">7 Wins (Championship)</option>
+                <option value="10">10 Wins (Endurance)</option>
+              </select>
+            </div>
+            <div class="lobby-rule-divider">•</div>
+            <div class="lobby-rule-item">
+              <label for="lobby-round-hp">ROUND HP:</label>
+              <select id="lobby-round-hp" class="rule-select">
+                <option value="1">1 Heart (One-Hit KO)</option>
+                <option value="2">2 Hearts (Brisk)</option>
+                <option value="3" selected>3 Hearts (Standard)</option>
+                <option value="4">4 Hearts (Sturdy)</option>
+                <option value="5">5 Hearts (Juggernaut)</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -401,7 +456,7 @@
           <p>At the end of each round, losers draft 1 of 3 random cards to turn the tide of battle!</p>
         </div>
 
-        <div class="codex-container">
+        <div class="codex-container" id="codex-container">
           <div class="codex-half">
             <h3 class="codex-subhead sword-accent">⚔️ 10 SWORD UPGRADES</h3>
             <div class="codex-grid" id="codex-sword-grid"></div>
@@ -442,7 +497,7 @@
         <div class="podium-content">
           <div class="podium-trophy-glow">🏆</div>
           <h1 class="victory-title" id="victory-player-name">PLAYER 1 VICTORIOUS!</h1>
-          <p class="victory-subtitle">CHAMPION OF SWORDS & ARROWS (FIRST TO 3 WINS)</p>
+          <p class="victory-subtitle" id="victory-subtitle">CHAMPION OF SWORDS & ARROWS (FIRST TO 3 WINS)</p>
 
           <div class="podium-stage" id="podium-stage">
             <!-- 2nd, 1st, 3rd, 4th place stands -->
@@ -456,6 +511,7 @@
             <button id="btn-rematch" class="btn btn-primary glow-gold">REMATCH (SAME ARENA)</button>
             <button id="btn-change-map" class="btn btn-secondary">CHANGE ARENA</button>
             <button id="btn-main-menu" class="btn btn-secondary">MAIN MENU</button>
+            <button id="btn-podium-exit" class="btn btn-secondary btn-exit desktop-only hidden">EXIT GAME</button>
           </div>
         </div>
       </div>

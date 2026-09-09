@@ -17,6 +17,7 @@ export class UIManager {
   private codexScreen = document.getElementById('codex-screen')!;
   private draftScreen = document.getElementById('draft-screen')!;
   private podiumScreen = document.getElementById('podium-screen')!;
+  private pauseScreen = document.getElementById('pause-screen')!;
   private hudLayer = document.getElementById('hud-layer')!;
 
   // Lobby state
@@ -27,6 +28,8 @@ export class UIManager {
     { slot: 3, active: false, name: 'Player 4', color: '#ffb703', type: 'cpu-med' }
   ];
   private selectedMapId: string = 'random';
+  private targetWins: number = 3;
+  private roundHp: number = 3;
 
   constructor(game: Game) {
     this.game = game;
@@ -43,6 +46,57 @@ export class UIManager {
   }
 
   private initEventListeners(): void {
+    // Match Rules (Target Wins & Round HP)
+    const targetWinsSelect = document.getElementById('lobby-target-wins') as HTMLSelectElement;
+    targetWinsSelect?.addEventListener('change', (e) => {
+      this.targetWins = parseInt((e.target as HTMLSelectElement).value, 10) || 3;
+    });
+
+    const roundHpSelect = document.getElementById('lobby-round-hp') as HTMLSelectElement;
+    roundHpSelect?.addEventListener('change', (e) => {
+      this.roundHp = parseInt((e.target as HTMLSelectElement).value, 10) || 3;
+    });
+
+    // Desktop App Support (Electron)
+    if (this.isDesktopApp()) {
+      document.querySelectorAll('.desktop-only').forEach(el => {
+        el.classList.remove('hidden');
+      });
+    }
+
+    const handleExitGame = () => {
+      if ((window as any).electronAPI?.exitGame) {
+        (window as any).electronAPI.exitGame();
+      } else {
+        window.close();
+      }
+    };
+
+    document.getElementById('btn-exit-game')?.addEventListener('click', handleExitGame);
+    document.getElementById('btn-podium-exit')?.addEventListener('click', handleExitGame);
+    document.getElementById('btn-pause-exit')?.addEventListener('click', handleExitGame);
+
+    // Pause Screen buttons
+    document.getElementById('btn-pause-resume')?.addEventListener('click', () => {
+      this.game.resume();
+    });
+
+    document.getElementById('btn-pause-restart')?.addEventListener('click', () => {
+      this.game.resume();
+      this.startGameMatch();
+    });
+
+    document.getElementById('btn-pause-menu')?.addEventListener('click', () => {
+      this.game.resume();
+      this.showScreen('title');
+    });
+
+    this.gamepadNav.onTogglePauseRequested = () => {
+      if (this.game.state === 'playing') {
+        this.game.togglePause();
+      }
+    };
+
     // Title Screen buttons
     document.getElementById('btn-start-game')?.addEventListener('click', () => {
       this.game.sound.init();
@@ -95,7 +149,7 @@ export class UIManager {
     // Podium buttons
     document.getElementById('btn-rematch')?.addEventListener('click', () => {
       this.showScreen('game');
-      this.game.initMatch(this.playerConfigs, this.selectedMapId);
+      this.game.initMatch(this.playerConfigs, this.selectedMapId, this.targetWins, this.roundHp);
     });
 
     document.getElementById('btn-change-map')?.addEventListener('click', () => {
@@ -227,10 +281,10 @@ export class UIManager {
 
   private selectMap(mapId: string, mapName: string): void {
     this.selectedMapId = mapId;
-    document.querySelectorAll('.map-card').forEach(c => c.classList.remove('selected'));
     const info = document.getElementById('selected-map-name');
     if (info) info.textContent = mapName;
     this.populateMapGrid();
+    this.gamepadNav.applyFocus();
   }
 
   private populateCodex(): void {
@@ -267,6 +321,7 @@ export class UIManager {
     this.codexScreen.classList.add('hidden');
     this.draftScreen.classList.add('hidden');
     this.podiumScreen.classList.add('hidden');
+    this.pauseScreen.classList.add('hidden');
 
     if (screen === 'title') this.titleScreen.classList.remove('hidden');
     else if (screen === 'lobby') {
@@ -281,6 +336,13 @@ export class UIManager {
     }
 
     this.gamepadNav.setScreen(screen);
+  }
+
+  private isDesktopApp(): boolean {
+    return typeof window !== 'undefined' && (
+      !!(window as any).electronAPI?.isElectron ||
+      window.location.search.includes('desktop=1')
+    );
   }
 
   private updateSpritePreviews(): void {
@@ -345,13 +407,24 @@ export class UIManager {
 
   private startGameMatch(): void {
     this.showScreen('game');
-    this.game.initMatch(this.playerConfigs, this.selectedMapId);
+    this.game.initMatch(this.playerConfigs, this.selectedMapId, this.targetWins, this.roundHp);
   }
 
   private bindGameCallbacks(): void {
     // HUD updates
     this.game.onHudUpdate = (game: Game) => {
       this.updateHud(game);
+    };
+
+    // Pause state change
+    this.game.onPauseChange = (isPaused: boolean) => {
+      if (isPaused) {
+        this.pauseScreen.classList.remove('hidden');
+        this.gamepadNav.setScreen('pause');
+      } else {
+        this.pauseScreen.classList.add('hidden');
+        this.gamepadNav.setScreen('game');
+      }
     };
 
     // Round Announcement
@@ -438,11 +511,15 @@ export class UIManager {
       this.gamepadNav.setDraftingPlayer(null);
     };
 
-    // Match Victory Podium Open (First to 3 Wins)
+    // Match Victory Podium Open
     this.game.onPodiumOpen = (winner: Player, rankings: Player[]) => {
       this.hudLayer.classList.add('hidden');
       this.gamepadNav.setScreen('podium');
       const winName = document.getElementById('victory-player-name');
+      const victorySubtitle = document.getElementById('victory-subtitle') || document.querySelector('.victory-subtitle');
+      if (victorySubtitle) {
+        victorySubtitle.textContent = `CHAMPION OF SWORDS & ARROWS (FIRST TO ${this.game.targetWins} WINS)`;
+      }
       const stage = document.getElementById('podium-stage');
       const statsContainer = document.getElementById('match-stats-container');
       if (!winName || !stage || !statsContainer) return;

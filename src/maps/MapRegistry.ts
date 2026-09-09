@@ -451,23 +451,23 @@ export const ARENA_MAPS: ArenaMap[] = [
     ambientType: 'clouds',
     gravityScale: 0.75,
     spawnPoints: [
-      { x: 220, y: 480 },
-      { x: 1060, y: 480 },
-      { x: 640, y: 280 },
-      { x: 640, y: 520 }
+      { x: 230, y: 430 },
+      { x: 1050, y: 430 },
+      { x: 530, y: 510 },
+      { x: 750, y: 510 }
     ],
     hazards: [],
     platforms: [
       // Central Astral Nexus
-      { x: 440, y: 590, w: 400, h: 35, color: '#1f103b', borderColor: '#8338ec' },
-      // Side Starlight Steps
-      { x: 120, y: 470, w: 240, h: 25, oneWay: true, color: '#2b1055', borderColor: '#3a86ff' },
-      { x: 920, y: 470, w: 240, h: 25, oneWay: true, color: '#2b1055', borderColor: '#3a86ff' },
+      { x: 420, y: 590, w: 440, h: 35, color: '#1f103b', borderColor: '#8338ec' },
+      // Side Starlight Steps (Solid floating bastions)
+      { x: 100, y: 510, w: 260, h: 30, color: '#2b1055', borderColor: '#3a86ff' },
+      { x: 920, y: 510, w: 260, h: 30, color: '#2b1055', borderColor: '#3a86ff' },
       // Dimensional Shards
-      { x: 300, y: 330, w: 200, h: 18, bouncy: 1.4, oneWay: true, color: '#3a0ca3', borderColor: '#f72585' },
-      { x: 780, y: 330, w: 200, h: 18, bouncy: 1.4, oneWay: true, color: '#3a0ca3', borderColor: '#f72585' },
+      { x: 300, y: 340, w: 200, h: 18, bouncy: 1.4, oneWay: true, color: '#3a0ca3', borderColor: '#f72585' },
+      { x: 780, y: 340, w: 200, h: 18, bouncy: 1.4, oneWay: true, color: '#3a0ca3', borderColor: '#f72585' },
       // Celestial Crown
-      { x: 480, y: 180, w: 320, h: 20, oneWay: true, bouncy: 1.3, color: '#7209b7', borderColor: '#00f5d4' }
+      { x: 480, y: 190, w: 320, h: 20, oneWay: true, bouncy: 1.3, color: '#7209b7', borderColor: '#00f5d4' }
     ]
   }
 ];

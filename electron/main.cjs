@@ -1,5 +1,10 @@
-const { app, BrowserWindow, Menu, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
+
+// IPC handler for renderer exit game request
+ipcMain.on('exit-game', () => {
+  app.quit();
+});
 
 let mainWindow = null;
 

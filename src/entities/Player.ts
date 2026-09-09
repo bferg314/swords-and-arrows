@@ -40,11 +40,13 @@ export class Player {
   private coyoteTimer: number = 0;
   private jumpsRemaining: number = 2;
   private dropThroughTimer: number = 0;
+  public get jumpsLeft(): number { return this.jumpsRemaining; }
 
   // Dash feel
   public isDashing: boolean = false;
   private dashTimer: number = 0;
   private dashCooldown: number = 0;
+  public get canDash(): boolean { return this.dashCooldown <= 0 && !this.isDashing; }
   public isInvulnerable: boolean = false;
   private invulnerableTimer: number = 0;
 
@@ -122,6 +124,16 @@ export class Player {
     this.freezeTimer = 0;
     this.speedSurgeTimer = 0;
     this.jumpsRemaining = 2;
+    this.dropThroughTimer = 0;
+    this.jumpBufferTimer = 0;
+    this.coyoteTimer = 0;
+    this.isDownThrusting = false;
+    this.isGrounded = false;
+    this.isWallSliding = false;
+    this.isTouchingWallLeft = false;
+    this.isTouchingWallRight = false;
+    this.weaponSwitchCooldown = 0;
+    this.ammoRegenTimer = 0;
   }
 
   public hasPowerUp(id: string): boolean {

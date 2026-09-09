@@ -1,7 +1,7 @@
 {
   "name": "swords-and-arrows",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "2-4 player couch multiplayer platform fighter with swords, arrows, and underdog comeback drafting",
   "author": "Swords & Arrows Team <ninjabreath@gmail.com>",
   "main": "electron/main.cjs",

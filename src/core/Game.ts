@@ -36,6 +36,7 @@ export class Game {
 
   // Match Configuration
   public targetWins: number = 3;
+  public roundHp: number = 3;
   public roundNumber: number = 1;
   public selectedMapId: string = 'random';
 
@@ -49,12 +50,16 @@ export class Game {
   public currentDraftingPlayer: Player | null = null;
   public currentDraftCards: PowerUpDefinition[] = [];
 
+  // Pause State
+  public isPaused: boolean = false;
+
   // UI callbacks
   public onHudUpdate?: (game: Game) => void;
   public onRoundAnnounce?: (title: string, sub: string) => void;
   public onDraftOpen?: (player: Player, cards: PowerUpDefinition[]) => void;
   public onDraftClose?: () => void;
   public onPodiumOpen?: (winner: Player, rankings: Player[]) => void;
+  public onPauseChange?: (isPaused: boolean) => void;
   public onMenuUpdate?: (dt: number) => void;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -68,12 +73,15 @@ export class Game {
     this.currentMap = ARENA_MAPS[0];
   }
 
-  public initMatch(playerConfigs: GamePlayerConfig[], mapId: string = 'random'): void {
+  public initMatch(playerConfigs: GamePlayerConfig[], mapId: string = 'random', targetWins: number = 3, roundHp: number = 3): void {
     this.sound.init();
     this.selectedMapId = mapId;
+    this.targetWins = targetWins;
+    this.roundHp = roundHp;
     this.roundNumber = 1;
     this.matchWinner = null;
     this.roundWinner = null;
+    this.isPaused = false;
     this.projectiles = [];
     this.particles.clear();
     this.input.resetMatchInput();
@@ -132,7 +140,7 @@ export class Game {
     const spawns = this.currentMap.spawnPoints;
     this.players.forEach((p, index) => {
       const sp = spawns[index % spawns.length];
-      p.resetForRound(sp.x, sp.y, 3);
+      p.resetForRound(sp.x, sp.y, this.roundHp);
     });
 
     if (this.onRoundAnnounce) {
@@ -148,6 +156,11 @@ export class Game {
     // UI & Gamepad Menu Navigator update
     if (this.onMenuUpdate) {
       this.onMenuUpdate(dt);
+    }
+
+    if (this.isPaused) {
+      this.input.endFrame();
+      return;
     }
 
     // 1. Update Game Loop based on State
@@ -166,6 +179,26 @@ export class Game {
 
     // End frame input clearances
     this.input.endFrame();
+  }
+
+  public pause(): void {
+    if (this.state !== 'playing' || this.isPaused) return;
+    this.isPaused = true;
+    if (this.onPauseChange) this.onPauseChange(true);
+  }
+
+  public resume(): void {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    if (this.onPauseChange) this.onPauseChange(false);
+  }
+
+  public togglePause(): void {
+    if (this.isPaused) {
+      this.resume();
+    } else {
+      this.pause();
+    }
   }
 
   private updateBattle(dt: number): void {

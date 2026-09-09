@@ -10,16 +10,263 @@ export class BotController {
   private jumpTimer: number = 0;
   private attackDecisionTimer: number = 0;
 
+  // Jump feel & Long Jump / Double Jump state
+  private jumpHoldTimer: number = 0;
+  private wantsDoubleJump: boolean = false;
+  private doubleJumpDelayTimer: number = 0;
+  private airSteerDir: number = 0;
+  private airSteerTimer: number = 0;
+
   constructor(player: Player) {
     this.player = player;
+  }
+
+  /**
+   * Helper to initiate a full-height long jump, optionally queueing a timed double jump near apex.
+   */
+  private triggerJump(holdDuration: number = 0.30, enableDoubleJump: boolean = false, steerDir: number = 0): void {
+    this.jumpHoldTimer = holdDuration;
+    this.wantsDoubleJump = enableDoubleJump;
+    this.doubleJumpDelayTimer = 0.24; // Wait ~0.24s into the first jump ascent before executing double jump
+    this.jumpTimer = 0;
+    if (steerDir !== 0) {
+      this.airSteerDir = steerDir;
+      this.airSteerTimer = enableDoubleJump ? 0.65 : 0.40;
+    }
+  }
+
+  /**
+   * Checks if position (x, y) has an active hazard directly beneath it without any safe platform in between.
+   */
+  private isOverHazard(
+    x: number,
+    y: number,
+    platforms: Platform[],
+    hazards: HazardZone[]
+  ): HazardZone | null {
+    const activeHazards = hazards.filter(h => h.active !== false);
+    for (const h of activeHazards) {
+      if (x >= h.x - 15 && x <= h.x + h.w + 15 && y < h.y + h.h) {
+        // Check if there is a safe solid platform between y and h.y
+        const hasSafePlatform = platforms.some(p =>
+          p.crumbleState !== 'vanished' &&
+          !p.hazard &&
+          p.y >= y - 6 &&
+          p.y <= h.y &&
+          x >= p.x - 6 &&
+          x <= p.x + p.w + 6
+        );
+        if (!hasSafePlatform) {
+          return h;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Checks if falling at (x, y) would drop into either an explicit hazard or the bottom abyss.
+   */
+  private isLethalFall(
+    x: number,
+    y: number,
+    platforms: Platform[],
+    hazards: HazardZone[]
+  ): boolean {
+    if (this.isOverHazard(x, y, platforms, hazards)) return true;
+
+    // Check if there is NO platform below x all the way to bottom of map (abyss drop)
+    const hasPlatformBelow = platforms.some(p =>
+      p.crumbleState !== 'vanished' &&
+      !p.hazard &&
+      p.y > y - 6 &&
+      x >= p.x - 6 &&
+      x <= p.x + p.w + 6
+    );
+    if (!hasPlatformBelow && y > 520) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Finds the platform currently beneath the bot's feet, if any.
+   */
+  private getCurrentPlatform(platforms: Platform[]): Platform | null {
+    const halfW = this.player.width * 0.5;
+    const halfH = this.player.height * 0.5;
+    const footY = this.player.y + halfH;
+
+    for (const p of platforms) {
+      if (p.crumbleState === 'vanished') continue;
+      if (
+        this.player.x + halfW > p.x &&
+        this.player.x - halfW < p.x + p.w &&
+        Math.abs(footY - p.y) <= 10
+      ) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Inspects the edge ahead in moveDir.
+   * Returns whether walking forward would step off into a hazard/abyss or gap,
+   * whether a forward jump can reach a safe platform, and whether a double jump is needed.
+   */
+  private evaluateLedgeAhead(
+    moveDir: number,
+    currentPlat: Platform,
+    platforms: Platform[],
+    hazards: HazardZone[]
+  ): { isHazardAhead: boolean; canJumpAcross: boolean; bestTargetPlat: Platform | null; needsDoubleJump: boolean } {
+    const edgeX = moveDir > 0 ? currentPlat.x + currentPlat.w : currentPlat.x;
+    const distToEdge = moveDir > 0 ? (edgeX - this.player.x) : (this.player.x - edgeX);
+
+    // If still comfortably inside platform boundaries (> 55px from edge), not yet at ledge
+    if (distToEdge > 55) {
+      return { isHazardAhead: false, canJumpAcross: false, bestTargetPlat: null, needsDoubleJump: false };
+    }
+
+    // Look at where stepping off will drop
+    const stepOffX = edgeX + moveDir * 35;
+    const isHazardAhead = this.isLethalFall(stepOffX, currentPlat.y, platforms, hazards);
+
+    // Also check if stepping off drops into a deep gap (> 60px down to next ground)
+    const hasCloseGroundBelow = platforms.some(p =>
+      p !== currentPlat &&
+      p.crumbleState !== 'vanished' &&
+      !p.hazard &&
+      stepOffX >= p.x - 5 && stepOffX <= p.x + p.w + 5 &&
+      p.y > currentPlat.y && p.y <= currentPlat.y + 60
+    );
+    const isGapAhead = !hasCloseGroundBelow;
+
+    if (!isHazardAhead && !isGapAhead) {
+      return { isHazardAhead: false, canJumpAcross: false, bestTargetPlat: null, needsDoubleJump: false };
+    }
+
+    // There IS a hazard or gap ahead! Can we jump forward to clear it and land on a safe platform?
+    let bestTargetPlat: Platform | null = null;
+    let bestDist = 9999;
+    let needsDoubleJump = false;
+
+    for (const p of platforms) {
+      if (p === currentPlat || p.crumbleState === 'vanished' || p.hazard) continue;
+      const platEdgeTowardsBot = moveDir > 0 ? p.x : (p.x + p.w);
+      const hDist = (platEdgeTowardsBot - edgeX) * moveDir;
+      const vDist = p.y - currentPlat.y; // negative = higher, positive = lower
+
+      // With long jump + double jump, horizontal reach is up to ~340px, vertical reach [-240px, +180px]
+      if (hDist > 10 && hDist < 340 && vDist > -240 && vDist < 180) {
+        if (hDist < bestDist) {
+          bestDist = hDist;
+          bestTargetPlat = p;
+          needsDoubleJump = hDist > 80 || vDist < -60;
+        }
+      }
+    }
+
+    return {
+      isHazardAhead,
+      canJumpAcross: bestTargetPlat !== null,
+      bestTargetPlat,
+      needsDoubleJump
+    };
+  }
+
+  /**
+   * Airborne emergency hazard recovery: if the bot is in mid-air over a hazard or abyss,
+   * immediately steer towards the nearest safe platform and jump/dash to safety.
+   */
+  private handleAirborneHazardRecovery(
+    state: PlayerInputState,
+    platforms: Platform[],
+    hazards: HazardZone[]
+  ): boolean {
+    if (this.player.isGrounded) return false;
+
+    const isLethal = this.isLethalFall(this.player.x, this.player.y, platforms, hazards);
+    if (!isLethal) return false;
+
+    // Find nearest safe platform
+    let nearestSafePlat: Platform | null = null;
+    let minScore = 99999;
+
+    for (const p of platforms) {
+      if (p.crumbleState === 'vanished' || p.hazard) continue;
+      const platCenter = p.x + p.w * 0.5;
+      const hDist = Math.abs(platCenter - this.player.x);
+      const vDist = p.y - this.player.y; // positive = below, negative = above
+
+      // Favor platforms beneath us or reachable via jump
+      if (vDist > -220) {
+        const score = hDist + Math.max(0, -vDist) * 1.5;
+        if (score < minScore) {
+          minScore = score;
+          nearestSafePlat = p;
+        }
+      }
+    }
+
+    if (nearestSafePlat) {
+      const targetCenter = nearestSafePlat.x + nearestSafePlat.w * 0.5;
+      const steerDir = targetCenter > this.player.x + 8 ? 1 : (targetCenter < this.player.x - 8 ? -1 : 0);
+      if (steerDir > 0) {
+        state.right = true;
+        state.left = false;
+      } else if (steerDir < 0) {
+        state.left = true;
+        state.right = false;
+      }
+
+      // Air recovery jump / double jump with hold!
+      if (this.player.jumpsLeft > 0 && this.jumpTimer > 0.18) {
+        this.triggerJump(0.30, false, steerDir);
+        state.jump = true;
+        state.jumpJustPressed = true;
+      } else if (this.player.canDash && minScore > 60 && this.player.vy > 40) {
+        // Emergency air dash towards safety
+        state.dash = true;
+        state.dashJustPressed = true;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Checks if an upper platform is reachable directly above the current platform.
+   */
+  private findReachableUpperPlatform(
+    currentPlat: Platform,
+    platforms: Platform[]
+  ): Platform | null {
+    const halfW = this.player.width * 0.5;
+    for (const p of platforms) {
+      if (p === currentPlat || p.crumbleState === 'vanished' || p.hazard) continue;
+      const vDist = p.y - currentPlat.y;
+      // Reaching straight up via double jump (-260px)
+      if (vDist < -60 && vDist > -260) {
+        if (
+          (this.player.x + halfW > p.x && this.player.x - halfW < p.x + p.w) ||
+          Math.abs((p.x + p.w * 0.5) - this.player.x) < 160
+        ) {
+          return p;
+        }
+      }
+    }
+    return null;
   }
 
   public generateInput(
     dt: number,
     allPlayers: Player[],
     projectiles: Projectile[],
-    _platforms: Platform[],
-    _hazards: HazardZone[]
+    platforms: Platform[],
+    hazards: HazardZone[]
   ): PlayerInputState {
     const state: PlayerInputState = {
       left: false,
@@ -47,7 +294,52 @@ export class BotController {
     this.jumpTimer += dt;
     this.attackDecisionTimer += dt;
 
-    // 1. Find nearest alive opponent
+    // ================= 0. JUMP HOLD & TIMED DOUBLE JUMP LOGIC =================
+    // Hold jump button to achieve full variable jump height (prevents short hops)
+    if (this.jumpHoldTimer > 0) {
+      this.jumpHoldTimer -= dt;
+      state.jump = true;
+    }
+
+    if (this.player.isGrounded) {
+      this.wantsDoubleJump = false;
+      this.doubleJumpDelayTimer = 0;
+      this.airSteerTimer = 0;
+    } else {
+      // While airborne, if a double jump is queued, trigger it near the first jump apex
+      if (this.wantsDoubleJump) {
+        this.doubleJumpDelayTimer -= dt;
+        if (this.doubleJumpDelayTimer <= 0 && this.player.jumpsLeft > 0) {
+          state.jump = true;
+          state.jumpJustPressed = true;
+          this.jumpHoldTimer = 0.28; // Hold double jump for maximum loft & distance
+          this.wantsDoubleJump = false;
+          this.jumpTimer = 0;
+        }
+      }
+
+      // Air steering across gaps: maintain forward direction through the leap unless approaching outer danger
+      if (this.airSteerTimer > 0) {
+        this.airSteerTimer -= dt;
+        if (this.airSteerDir > 0) {
+          if (!this.isLethalFall(this.player.x + 35, this.player.y + 50, platforms, hazards) || this.player.x < 1120) {
+            state.right = true;
+            state.left = false;
+          } else {
+            this.airSteerTimer = 0;
+          }
+        } else if (this.airSteerDir < 0) {
+          if (!this.isLethalFall(this.player.x - 35, this.player.y + 50, platforms, hazards) || this.player.x > 160) {
+            state.left = true;
+            state.right = false;
+          } else {
+            this.airSteerTimer = 0;
+          }
+        }
+      }
+    }
+
+    // ================= 1. TARGETING & OPPONENTS =================
     let nearestOpponent: Player | null = null;
     let minDistance = 99999;
 
@@ -66,12 +358,11 @@ export class BotController {
     const dx = nearestOpponent.x - this.player.x;
     const dy = nearestOpponent.y - this.player.y;
 
-    // 2. Incoming projectile defense (Parry reaction!)
+    // ================= 2. PARRY DEFENSE =================
     const parryReactionDist = this.player.cpuDifficulty === 'hard' ? 140 : (this.player.cpuDifficulty === 'med' ? 100 : 60);
     for (const proj of projectiles) {
       if (!proj.isStuck && !proj.isDead && proj.ownerIndex !== this.player.index) {
         const pDist = Math.hypot(proj.x - this.player.x, proj.y - this.player.y);
-        // Is projectile moving towards bot?
         const toBotX = this.player.x - proj.x;
         const toBotY = this.player.y - proj.y;
         const dot = proj.vx * toBotX + proj.vy * toBotY;
@@ -87,43 +378,91 @@ export class BotController {
       }
     }
 
-    // 3. Tactical Weapon Switching
-    // Close range (< 120px) -> Prefer Sword
-    // Long range (> 180px) -> Prefer Bow
+    // ================= 3. WEAPON SWITCHING =================
     if (minDistance < 120 && this.player.currentWeapon !== 'sword') {
       state.switchWeaponJustPressed = true;
     } else if (minDistance > 200 && this.player.currentWeapon !== 'bow') {
       state.switchWeaponJustPressed = true;
     }
 
-    // 4. Movement Logic
-    if (Math.abs(dx) > 40) {
-      if (dx > 0) {
-        state.right = true;
-      } else {
-        state.left = true;
+    // ================= 4. MOVEMENT & NAVIGATION =================
+    const moveDir = Math.abs(dx) > 40 ? (dx > 0 ? 1 : -1) : 0;
+    const currentPlat = this.getCurrentPlatform(platforms);
+
+    // Check if airborne and over hazard (immediate emergency recovery)
+    const isRecovering = this.handleAirborneHazardRecovery(state, platforms, hazards);
+
+    if (!isRecovering) {
+      if (this.airSteerTimer <= 0 && moveDir !== 0) {
+        if (moveDir > 0) state.right = true;
+        else state.left = true;
+      }
+
+      // If grounded on a platform, check the ledge ahead for hazards / gaps!
+      if (currentPlat && moveDir !== 0) {
+        const ledgeCheck = this.evaluateLedgeAhead(moveDir, currentPlat, platforms, hazards);
+        if (ledgeCheck.isHazardAhead || ledgeCheck.canJumpAcross) {
+          if (ledgeCheck.canJumpAcross && this.jumpTimer > 0.2) {
+            // Long jump across the gap, followed by a double jump if needed!
+            this.triggerJump(0.30, ledgeCheck.needsDoubleJump, moveDir);
+            state.jump = true;
+            state.jumpJustPressed = true;
+          } else if (ledgeCheck.isHazardAhead) {
+            // Cannot jump across directly: do NOT suicide walk off into the hazard!
+            if (moveDir > 0) state.right = false;
+            else state.left = false;
+
+            // Check if there is an upper platform to jump up to instead
+            const upperPlat = this.findReachableUpperPlatform(currentPlat, platforms);
+            if (upperPlat && this.jumpTimer > 0.25) {
+              const vDist = upperPlat.y - currentPlat.y;
+              this.triggerJump(0.30, vDist < -80, moveDir);
+              state.jump = true;
+              state.jumpJustPressed = true;
+            } else {
+              // Stay safe on the platform / turn slightly away from the dangerous edge
+              if (moveDir > 0) state.left = true;
+              else state.right = true;
+            }
+          }
+        }
+      }
+
+      // Shaking crumble platform reaction: leap before the block vanishes beneath feet!
+      if (currentPlat && currentPlat.crumble && currentPlat.crumbleState === 'shaking') {
+        if (this.jumpTimer > 0.16) {
+          this.triggerJump(0.30, true, moveDir || (this.player.facingLeft ? -1 : 1));
+          state.jump = true;
+          state.jumpJustPressed = true;
+        }
+      }
+
+      // Vertical navigation: Jump or Drop through
+      if (dy < -60 && this.jumpTimer > 0.45) {
+        // Opponent is above: Long jump, followed by a double jump if opponent is high up
+        const needsDouble = dy < -90;
+        this.triggerJump(0.30, needsDouble, moveDir);
+        state.jump = true;
+        state.jumpJustPressed = true;
+      } else if (dy > 80 && this.player.isGrounded && Math.random() < 0.04) {
+        // Opponent is below: ONLY drop through if there is safe ground beneath!
+        if (currentPlat && currentPlat.oneWay) {
+          const isHazardBelow = this.isLethalFall(this.player.x, currentPlat.y + currentPlat.h + 15, platforms, hazards);
+          if (!isHazardBelow) {
+            state.down = true;
+            state.jumpJustPressed = true;
+          }
+        }
+      }
+
+      // Tactical dash to close gap or evade when on safe terrain
+      if (minDistance < 180 && minDistance > 80 && Math.random() < 0.03 && !this.isLethalFall(this.player.x + (moveDir * 120), this.player.y, platforms, hazards)) {
+        state.dashJustPressed = true;
+        state.dash = true;
       }
     }
 
-    // Vertical navigation: Jump or Drop through
-    if (dy < -60 && this.jumpTimer > 0.45) {
-      // Opponent is above: Jump
-      state.jump = true;
-      state.jumpJustPressed = true;
-      this.jumpTimer = 0;
-    } else if (dy > 80 && this.player.isGrounded && Math.random() < 0.04) {
-      // Opponent is below: Drop through
-      state.down = true;
-      state.jumpJustPressed = true;
-    }
-
-    // Occasional dash to close gap or evade
-    if (minDistance < 180 && minDistance > 80 && Math.random() < 0.03) {
-      state.dashJustPressed = true;
-      state.dash = true;
-    }
-
-    // 5. Combat Action
+    // ================= 5. COMBAT ACTIONS =================
     if (this.player.currentWeapon === 'sword') {
       // Melee attack when in range
       if (minDistance < 70 && Math.abs(dy) < 40) {
@@ -131,8 +470,7 @@ export class BotController {
         state.attack = true;
       }
     } else {
-      // Ranged bow combat
-      // Lead calculation
+      // Ranged bow combat with lead calculation
       const leadX = dx + nearestOpponent.vx * 0.15;
       const leadY = dy + nearestOpponent.vy * 0.15;
       const len = Math.hypot(leadX, leadY) || 1;
@@ -141,18 +479,15 @@ export class BotController {
       state.aimY = leadY / len;
 
       if (!this.player.isDrawingBow && this.attackDecisionTimer > 0.6) {
-        // Start draw
         state.attack = true;
         state.attackJustPressed = true;
         this.attackDecisionTimer = 0;
       } else if (this.player.isDrawingBow) {
         const targetCharge = this.player.cpuDifficulty === 'hard' ? 0.9 : 0.65;
         if (this.player.bowDrawCharge >= targetCharge) {
-          // Release shot
           state.attack = false;
           state.attackJustReleased = true;
         } else {
-          // Keep holding
           state.attack = true;
         }
       }
@@ -162,7 +497,6 @@ export class BotController {
   }
 
   public pickDraftPowerUp(cards: PowerUpDefinition[]): PowerUpDefinition {
-    // Pick the best powerup matching favorite weapon or highest tier
     if (this.player.hasPowerUp('triple-volley') || this.player.hasPowerUp('seeker-arrows')) {
       const bowCard = cards.find(c => c.category === 'bow');
       if (bowCard) return bowCard;
@@ -171,7 +505,6 @@ export class BotController {
       if (swordCard) return swordCard;
     }
 
-    // Default: choose random of the 3
     const randomIndex = Math.floor(Math.random() * cards.length);
     return cards[randomIndex];
   }
