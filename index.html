@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Swords & Arrows - 2-4 Player Couch Platform Battle</title>
+  <meta name="description" content="A fast-paced 2-4 player couch multiplayer platform fighter with instant sword/bow switching, 12 arena maps, and round-loser power-up drafts.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Outfit:wght@400;600;800;900&family=Cinzel:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+  <div id="game-app">
+    <!-- Main Canvas Viewport -->
+    <div id="canvas-container">
+      <canvas id="game-canvas" width="1280" height="720"></canvas>
+      
+      <!-- In-Game In-Engine HUD Layer -->
+      <div id="hud-layer" class="ui-layer hidden">
+        <div id="hud-top-bar">
+          <div id="p1-card" class="player-hud-card p1-theme">
+            <div class="hud-avatar">P1</div>
+            <div class="hud-info">
+              <div class="hud-name-row">
+                <span class="hud-name">Player 1</span>
+                <span class="hud-type-badge">HUMAN</span>
+              </div>
+              <div class="hud-hearts" id="p1-hearts"></div>
+              <div class="hud-wins" id="p1-wins"></div>
+            </div>
+            <div class="hud-weapon-badge" id="p1-weapon">⚔️ SWORD</div>
+            <div class="hud-powerups-list" id="p1-powerups"></div>
+          </div>
+
+          <div id="p2-card" class="player-hud-card p2-theme">
+            <div class="hud-avatar">P2</div>
+            <div class="hud-info">
+              <div class="hud-name-row">
+                <span class="hud-name">Player 2</span>
+                <span class="hud-type-badge">CPU</span>
+              </div>
+              <div class="hud-hearts" id="p2-hearts"></div>
+              <div class="hud-wins" id="p2-wins"></div>
+            </div>
+            <div class="hud-weapon-badge" id="p2-weapon">🏹 BOW</div>
+            <div class="hud-powerups-list" id="p2-powerups"></div>
+          </div>
+
+          <div id="p3-card" class="player-hud-card p3-theme hidden">
+            <div class="hud-avatar">P3</div>
+            <div class="hud-info">
+              <div class="hud-name-row">
+                <span class="hud-name">Player 3</span>
+                <span class="hud-type-badge">CPU</span>
+              </div>
+              <div class="hud-hearts" id="p3-hearts"></div>
+              <div class="hud-wins" id="p3-wins"></div>
+            </div>
+            <div class="hud-weapon-badge" id="p3-weapon">⚔️ SWORD</div>
+            <div class="hud-powerups-list" id="p3-powerups"></div>
+          </div>
+
+          <div id="p4-card" class="player-hud-card p4-theme hidden">
+            <div class="hud-avatar">P4</div>
+            <div class="hud-info">
+              <div class="hud-name-row">
+                <span class="hud-name">Player 4</span>
+                <span class="hud-type-badge">CPU</span>
+              </div>
+              <div class="hud-hearts" id="p4-hearts"></div>
+              <div class="hud-wins" id="p4-wins"></div>
+            </div>
+            <div class="hud-weapon-badge" id="p4-weapon">🏹 BOW</div>
+            <div class="hud-powerups-list" id="p4-powerups"></div>
+          </div>
+        </div>
+
+        <div id="round-announcement" class="hidden">
+          <div class="round-title" id="announcement-text">ROUND 1</div>
+          <div class="round-subtitle" id="announcement-sub">FIRST TO 3 WINS</div>
+        </div>
+
+        <div id="hud-bottom-bar">
+          <div class="hud-map-indicator">
+            <span class="map-label">ARENA:</span>
+            <span id="hud-map-name" class="map-val">The Royal Courtyard</span>
+          </div>
+          <div class="hud-controls-hint">
+            <span>[R / Y] Switch Weapon</span> • 
+            <span>[F / X] Attack</span> • 
+            <span>[G / B] Parry/Dash</span> • 
+            <span>[W / Space / A] Jump</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Title Screen Layer -->
+      <div id="title-screen" class="ui-layer">
+        <div class="title-backdrop-glow"></div>
+        <div class="title-content">
+          <div class="game-logo-wrapper">
+            <div class="logo-subtitle">COUCH MULTIPLAYER ARENA</div>
+            <h1 class="game-title">SWORDS <span class="amp">&</span> ARROWS</h1>
+            <div class="logo-tagline">Master the Blade • Aim the Bow • Draft the Comeback</div>
+          </div>
+
+          <div class="menu-button-group">
+            <button id="btn-start-game" class="btn btn-primary glow-gold">
+              <span class="btn-icon">⚔️</span>
+              <span class="btn-text">START BATTLE</span>
+            </button>
+            <button id="btn-show-maps" class="btn btn-secondary">
+              <span class="btn-icon">🗺️</span>
+              <span class="btn-text">SELECT ARENA (12 MAPS)</span>
+            </button>
+            <button id="btn-show-controls" class="btn btn-secondary">
+              <span class="btn-icon">🎮</span>
+              <span class="btn-text">CONTROLS & HOW TO PLAY</span>
+            </button>
+            <button id="btn-show-powerups" class="btn btn-secondary">
+              <span class="btn-icon">✨</span>
+              <span class="btn-text">POWER-UP CODEX (20 PERKS)</span>
+            </button>
+          </div>
+
+          <div class="gamepad-status-bar" id="gamepad-status">
+            <span class="status-dot"></span>
+            <span id="gamepad-status-text">Checking for Gamepads (Plug in controllers or use keyboard)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Character / Player Lobby Select Screen -->
+      <div id="lobby-screen" class="ui-layer hidden">
+        <div class="screen-header">
+          <h2>WARRIOR LOBBY</h2>
+          <div class="lobby-meta-pill">
+            <span>Target: <strong>3 Wins</strong></span> • 
+            <span>Round HP: <strong>3 Hearts</strong></span>
+          </div>
+        </div>
+
+        <div class="player-slots-container">
+          <!-- P1 Slot -->
+          <div class="lobby-slot p1-theme active" id="slot-p1">
+            <div class="slot-header">
+              <span class="slot-tag">PLAYER 1</span>
+              <span class="slot-status">READY</span>
+            </div>
+            <div class="slot-sprite-preview" id="sprite-preview-1"></div>
+            <div class="slot-controls">
+              <div class="slot-row">
+                <label>TYPE</label>
+                <select id="p1-type" class="slot-select">
+                  <option value="human">Human (Keyboard 1 / GP 1)</option>
+                  <option value="cpu-easy">CPU (Novice)</option>
+                  <option value="cpu-med">CPU (Skilled)</option>
+                  <option value="cpu-hard">CPU (Deadly)</option>
+                </select>
+              </div>
+              <div class="slot-row">
+                <label>COLOR</label>
+                <div class="color-picker-row">
+                  <button class="color-swatch active" style="background:#e63946" data-color="#e63946" data-player="1"></button>
+                  <button class="color-swatch" style="background:#f72585" data-color="#f72585" data-player="1"></button>
+                  <button class="color-swatch" style="background:#9d4edd" data-color="#9d4edd" data-player="1"></button>
+                </div>
+              </div>
+              <div class="slot-keybinds">
+                <small>WASD: Move • F: Attack • G: Parry • R: Swap</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- P2 Slot -->
+          <div class="lobby-slot p2-theme active" id="slot-p2">
+            <div class="slot-header">
+              <span class="slot-tag">PLAYER 2</span>
+              <span class="slot-status">READY</span>
+            </div>
+            <div class="slot-sprite-preview" id="sprite-preview-2"></div>
+            <div class="slot-controls">
+              <div class="slot-row">
+                <label>TYPE</label>
+                <select id="p2-type" class="slot-select">
+                  <option value="cpu-med" selected>CPU (Skilled)</option>
+                  <option value="human">Human (Arrows / GP 2)</option>
+                  <option value="cpu-easy">CPU (Novice)</option>
+                  <option value="cpu-hard">CPU (Deadly)</option>
+                </select>
+              </div>
+              <div class="slot-row">
+                <label>COLOR</label>
+                <div class="color-picker-row">
+                  <button class="color-swatch active" style="background:#4361ee" data-color="#4361ee" data-player="2"></button>
+                  <button class="color-swatch" style="background:#4cc9f0" data-color="#4cc9f0" data-player="2"></button>
+                  <button class="color-swatch" style="background:#3a0ca3" data-color="#3a0ca3" data-player="2"></button>
+                </div>
+              </div>
+              <div class="slot-keybinds">
+                <small>Arrows: Move • K: Attack • L: Parry • O: Swap</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- P3 Slot -->
+          <div class="lobby-slot p3-theme" id="slot-p3">
+            <div class="slot-header">
+              <span class="slot-tag">PLAYER 3</span>
+              <button class="btn-toggle-slot" id="toggle-p3">+ ADD</button>
+            </div>
+            <div class="slot-content-body hidden" id="slot-body-p3">
+              <div class="slot-sprite-preview" id="sprite-preview-3"></div>
+              <div class="slot-controls">
+                <div class="slot-row">
+                  <label>TYPE</label>
+                  <select id="p3-type" class="slot-select">
+                    <option value="cpu-med">CPU (Skilled)</option>
+                    <option value="human">Human (IJKL / GP 3)</option>
+                    <option value="cpu-easy">CPU (Novice)</option>
+                    <option value="cpu-hard">CPU (Deadly)</option>
+                  </select>
+                </div>
+                <div class="slot-row">
+                  <label>COLOR</label>
+                  <div class="color-picker-row">
+                    <button class="color-swatch active" style="background:#2ec4b6" data-color="#2ec4b6" data-player="3"></button>
+                    <button class="color-swatch" style="background:#06d6a0" data-color="#06d6a0" data-player="3"></button>
+                    <button class="color-swatch" style="background:#118ab2" data-color="#118ab2" data-player="3"></button>
+                  </div>
+                </div>
+                <div class="slot-keybinds">
+                  <small>IJKL: Move • U: Attack • P: Parry • Y: Swap</small>
+                </div>
+              </div>
+            </div>
+            <div class="slot-placeholder" id="slot-placeholder-p3">
+              <span>EMPTY SLOT</span>
+              <small>Click "+ ADD" to enable 3-player battle</small>
+            </div>
+          </div>
+
+          <!-- P4 Slot -->
+          <div class="lobby-slot p4-theme" id="slot-p4">
+            <div class="slot-header">
+              <span class="slot-tag">PLAYER 4</span>
+              <button class="btn-toggle-slot" id="toggle-p4">+ ADD</button>
+            </div>
+            <div class="slot-content-body hidden" id="slot-body-p4">
+              <div class="slot-sprite-preview" id="sprite-preview-4"></div>
+              <div class="slot-controls">
+                <div class="slot-row">
+                  <label>TYPE</label>
+                  <select id="p4-type" class="slot-select">
+                    <option value="cpu-med">CPU (Skilled)</option>
+                    <option value="human">Human (Numpad / GP 4)</option>
+                    <option value="cpu-easy">CPU (Novice)</option>
+                    <option value="cpu-hard">CPU (Deadly)</option>
+                  </select>
+                </div>
+                <div class="slot-row">
+                  <label>COLOR</label>
+                  <div class="color-picker-row">
+                    <button class="color-swatch active" style="background:#ffb703" data-color="#ffb703" data-player="4"></button>
+                    <button class="color-swatch" style="background:#fb8500" data-color="#fb8500" data-player="4"></button>
+                    <button class="color-swatch" style="background:#e09f3e" data-color="#e09f3e" data-player="4"></button>
+                  </div>
+                </div>
+                <div class="slot-keybinds">
+                  <small>Numpad 8456: Move • 1: Atk • 2: Parry • 3: Swap</small>
+                </div>
+              </div>
+            </div>
+            <div class="slot-placeholder" id="slot-placeholder-p4">
+              <span>EMPTY SLOT</span>
+              <small>Click "+ ADD" to enable 4-player battle</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="lobby-bottom-bar">
+          <button id="btn-lobby-back" class="btn btn-secondary">← BACK</button>
+          <div class="lobby-center-spacer"></div>
+          <button id="btn-lobby-fight" class="btn btn-primary glow-gold">FIGHT! ⚔️</button>
+        </div>
+      </div>
+
+      <!-- Map Selection Screen (15 Maps) -->
+      <div id="map-select-screen" class="ui-layer hidden">
+        <div class="screen-header">
+          <h2>CHOOSE BATTLEFIELD (15 ARENAS)</h2>
+          <p>Each platform map features distinct hazards, platform mechanics, and tactical advantages.</p>
+        </div>
+
+        <div class="maps-grid-container" id="maps-grid">
+          <!-- Dynamically populated 12 maps + Random Map -->
+        </div>
+
+        <div class="lobby-bottom-bar">
+          <button id="btn-maps-back" class="btn btn-secondary">← BACK</button>
+          <div id="selected-map-info">Selected: <strong id="selected-map-name">Random Rotation</strong></div>
+          <button id="btn-maps-confirm" class="btn btn-primary">CONFIRM ARENA</button>
+        </div>
+      </div>
+
+      <!-- Controls & Guide Modal -->
+      <div id="controls-screen" class="ui-layer hidden">
+        <div class="modal-card">
+          <h2>CONTROLS & COMBAT GUIDE</h2>
+          <div class="guide-grid">
+            <div class="guide-col">
+              <h3>⚔️ SWORD MASTERY</h3>
+              <ul>
+                <li><strong>Melee Attack</strong>: Swing combo with horizontal reach. Hitbox deals damage and knockback.</li>
+                <li><strong>Dash Strike</strong>: Attack while dashing to lunge forward with invulnerability frames.</li>
+                <li><strong>Parry Shield</strong>: Raise your guard at the precise moment to <em>deflect arrows</em> back at opponents and stun melee attackers!</li>
+                <li><strong>Down-Thrust</strong>: Attack in mid-air while holding Down to pogo off foes and bounce high!</li>
+              </ul>
+            </div>
+            <div class="guide-col">
+              <h3>🏹 BOW & ARROW TACTICS</h3>
+              <ul>
+                <li><strong>Quick Lob</strong>: Tap attack to fire a quick arc arrow. Great for close suppressive fire.</li>
+                <li><strong>Charged Piercer</strong>: Hold attack to draw the bowstring. Releases a flat, hyper-velocity piercing arrow!</li>
+                <li><strong>Quiver & Retrieval</strong>: Arrows stick into walls and platforms. Walk over them to restock your quiver.</li>
+                <li><strong>Arrow Clash</strong>: Two opposing arrows colliding in mid-air deflect each other!</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="guide-controls-table">
+            <h3>COUCH CONTROLLER & KEYBOARD BINDINGS</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Gamepad</th>
+                  <th>Player 1 (Keyboard)</th>
+                  <th>Player 2 (Keyboard)</th>
+                  <th>P3 / P4</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Move / Aim</td>
+                  <td>Left Stick / D-Pad</td>
+                  <td>W / A / S / D</td>
+                  <td>Arrow Keys</td>
+                  <td>IJKL / Numpad 8456</td>
+                </tr>
+                <tr>
+                  <td>Jump / Drop Down</td>
+                  <td>A / Cross</td>
+                  <td>W / Space</td>
+                  <td>Up Arrow</td>
+                  <td>I / Numpad 8</td>
+                </tr>
+                <tr>
+                  <td>Attack (Slash / Shoot)</td>
+                  <td>X / Square</td>
+                  <td>F</td>
+                  <td>K</td>
+                  <td>U / Numpad 1</td>
+                </tr>
+                <tr>
+                  <td>Parry / Shield</td>
+                  <td>B / Circle</td>
+                  <td>G</td>
+                  <td>L</td>
+                  <td>P / Numpad 2</td>
+                </tr>
+                <tr>
+                  <td>Switch Weapon (Sword ↔ Bow)</td>
+                  <td>Y / Triangle / RB</td>
+                  <td>R</td>
+                  <td>O</td>
+                  <td>Y / Numpad 3</td>
+                </tr>
+                <tr>
+                  <td>Dash</td>
+                  <td>LT / RT / Double Tap</td>
+                  <td>Shift / Double Tap</td>
+                  <td>Right Shift / Double</td>
+                  <td>O / Numpad 0</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="modal-actions">
+            <button id="btn-controls-close" class="btn btn-primary">GOT IT! RETURN</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Power-Ups Codex Screen (20 Perks) -->
+      <div id="codex-screen" class="ui-layer hidden">
+        <div class="screen-header">
+          <h2>POWER-UP CODEX (20 LEGENDARY UPGRADES)</h2>
+          <p>At the end of each round, losers draft 1 of 3 random cards to turn the tide of battle!</p>
+        </div>
+
+        <div class="codex-container">
+          <div class="codex-half">
+            <h3 class="codex-subhead sword-accent">⚔️ 10 SWORD UPGRADES</h3>
+            <div class="codex-grid" id="codex-sword-grid"></div>
+          </div>
+          <div class="codex-half">
+            <h3 class="codex-subhead bow-accent">🏹 10 BOW UPGRADES</h3>
+            <div class="codex-grid" id="codex-bow-grid"></div>
+          </div>
+        </div>
+
+        <div class="lobby-bottom-bar">
+          <button id="btn-codex-close" class="btn btn-secondary">← BACK</button>
+        </div>
+      </div>
+
+      <!-- Underdog Power-Up Draft Modal (Triggered for Round Losers) -->
+      <div id="draft-screen" class="ui-layer hidden">
+        <div class="draft-modal-backdrop"></div>
+        <div class="draft-container">
+          <div class="draft-header">
+            <div class="draft-banner-tag" id="draft-player-tag">PLAYER 2'S TURN TO DRAFT</div>
+            <h2 class="draft-title">UNDERDOG POWER-UP REINFORCEMENT</h2>
+            <p class="draft-prompt">Choose 1 of the 3 cards below to permanently augment your warrior for subsequent rounds!</p>
+          </div>
+
+          <div class="draft-cards-row" id="draft-cards-container">
+            <!-- 3 interactive cards injected here -->
+          </div>
+
+          <div class="draft-footer-hint" id="draft-timer-hint">
+            <span>Select with Click or Gamepad A / Space</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Match Victory Podium Screen (First to 3 Wins) -->
+      <div id="podium-screen" class="ui-layer hidden">
+        <div class="podium-content">
+          <div class="podium-trophy-glow">🏆</div>
+          <h1 class="victory-title" id="victory-player-name">PLAYER 1 VICTORIOUS!</h1>
+          <p class="victory-subtitle">CHAMPION OF SWORDS & ARROWS (FIRST TO 3 WINS)</p>
+
+          <div class="podium-stage" id="podium-stage">
+            <!-- 2nd, 1st, 3rd, 4th place stands -->
+          </div>
+
+          <div class="match-stats-table" id="match-stats-container">
+            <!-- Stats: Kills, Parries, Arrows Deflected, Weapon Usage -->
+          </div>
+
+          <div class="podium-actions">
+            <button id="btn-rematch" class="btn btn-primary glow-gold">REMATCH (SAME ARENA)</button>
+            <button id="btn-change-map" class="btn btn-secondary">CHANGE ARENA</button>
+            <button id="btn-main-menu" class="btn btn-secondary">MAIN MENU</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>
