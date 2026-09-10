@@ -9,6 +9,24 @@
 
 **Swords & Arrows** is a fast-paced, high-stakes 2–4 player couch multiplayer platform battle game built with pure TypeScript, HTML5 Canvas 2D, and Electron. Inspired by classic arena combat games like *TowerFall*, *Smash Bros*, and *Duck Game*, it blends precision platforming, instant weapon toggling, skill-based arrow deflection, and an underdog comeback drafting system.
 
+<p align="center">
+  <img src="docs/screenshots/gameplay_battle.png" alt="Swords & Arrows 4-Player Combat" width="100%" />
+</p>
+
+---
+
+## 📸 Screenshots
+
+| ⚔️ Fast-Paced 4-Player Combat | 🃏 Underdog Power-Up Drafting |
+| :---: | :---: |
+| ![Fast-Paced Arena Combat](docs/screenshots/gameplay_battle.png) | ![Underdog Comeback Drafting](docs/screenshots/powerup_draft.png) |
+| *Mid-air archery, arrow deflection parries, and sword slashes* | *Round losers draft legendary perk cards to mount comebacks* |
+
+| 🏰 15 Unique Tactical Arenas | 👑 Main Menu & Couch Co-op Lobby |
+| :---: | :---: |
+| ![15 Tactical Arenas Selection](docs/screenshots/arena_selection.png) | ![Title Screen & Menu](docs/screenshots/title_screen.png) |
+| *Battlefields with distinct hazards, conveyors, ice, and buoyancy* | *Full Gamepad API controller support & keyboard splits* |
+
 ---
 
 ## 🌟 Key Features
