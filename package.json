@@ -1,7 +1,7 @@
 {
   "name": "swords-and-arrows",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "2-4 player couch multiplayer platform fighter with swords, arrows, and underdog comeback drafting",
   "author": "Swords & Arrows Team <ninjabreath@gmail.com>",
   "main": "electron/main.cjs",
@@ -32,11 +32,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -51,11 +55,17 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ]
     },
@@ -65,11 +75,15 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "deb",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     }

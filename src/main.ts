@@ -23,7 +23,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // Initialize Game & Systems
   const game = new Game(canvas);
   (window as any).game = game;
-  new UIManager(game);
+  const uiManager = new UIManager(game);
+  (window as any).uiManager = uiManager;
 
   // Start fixed-timestep game loop
   const loop = new GameLoop(
@@ -31,6 +32,28 @@ window.addEventListener('DOMContentLoaded', () => {
     () => game.render()
   );
   loop.start();
+
+  // Support ?mockGamepads=N for controller testing in browser environments
+  const urlParams = new URLSearchParams(window.location.search);
+  const mockCountStr = urlParams.get('mockGamepads');
+  if (mockCountStr !== null) {
+    const count = parseInt(mockCountStr, 10) || 3;
+    const makeGp = (index: number) => ({
+      index,
+      id: `Xbox 360 Controller #${index + 1} (STANDARD GAMEPAD)`,
+      connected: true,
+      buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
+      axes: [0, 0, 0, 0]
+    });
+    const mockGps: any[] = [];
+    for (let i = 0; i < count; i++) {
+      mockGps.push(makeGp(i));
+    }
+    (navigator as any).getGamepads = () => mockGps;
+    game.input.ensureHumanGamepadAssignments((uiManager as any).playerConfigs);
+    uiManager.updateLobbyGamepadBadges();
+    console.log(`[Dev] Mocked ${count} controllers via ?mockGamepads query parameter.`);
+  }
 
   console.log('⚔️ Swords & Arrows: Engine Initialized Successfully! 🏹');
 });

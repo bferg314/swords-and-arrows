@@ -37,10 +37,23 @@ export interface LightningBolt {
   maxLife: number;
 }
 
+export interface FloatingCombatText {
+  x: number;
+  y: number;
+  vy: number;
+  text: string;
+  color: string;
+  fontSize: number;
+  life: number;
+  maxLife: number;
+  scale: number;
+}
+
 export class ParticleSystem {
   private particles: Particle[] = [];
   private slashArcs: SlashArc[] = [];
   private lightningBolts: LightningBolt[] = [];
+  private floatingTexts: FloatingCombatText[] = [];
 
   public update(dt: number): void {
     // Update particles
@@ -77,6 +90,18 @@ export class ParticleSystem {
       if (bolt.life <= 0) {
         this.lightningBolts.splice(i, 1);
       }
+    }
+
+    // Update floating combat texts
+    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+      const ft = this.floatingTexts[i];
+      ft.life -= dt;
+      if (ft.life <= 0) {
+        this.floatingTexts.splice(i, 1);
+        continue;
+      }
+      ft.y += ft.vy * dt;
+      ft.vy *= 0.93; // Smooth decelerating float
     }
   }
 
@@ -145,12 +170,75 @@ export class ParticleSystem {
       ctx.restore();
     }
 
+    // Render floating combat texts
+    for (const ft of this.floatingTexts) {
+      const progress = 1 - (ft.life / ft.maxLife);
+      const alpha = Math.max(0, Math.min(1, ft.life / (ft.maxLife * 0.4)));
+      // Pop in scale effect: starts scaled up, settles, then floats
+      const currentScale = progress < 0.2
+        ? ft.scale * (0.8 + progress * 2.5)
+        : ft.scale * (1.0 + progress * 0.2);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = `900 ${Math.round(ft.fontSize * currentScale)}px Outfit, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Thick black stroke outline for high readability against any arena background
+      ctx.strokeStyle = '#020617';
+      ctx.lineWidth = 3.5;
+      ctx.shadowColor = ft.color;
+      ctx.shadowBlur = 10;
+      ctx.strokeText(ft.text, ft.x, ft.y);
+
+      // Vibrant inner fill
+      ctx.fillStyle = ft.color;
+      ctx.fillText(ft.text, ft.x, ft.y);
+      ctx.restore();
+    }
+
     ctx.restore();
   }
 
-  public createSlashArc(x: number, y: number, radius: number, facingLeft: boolean, color: string): void {
-    const startAngle = facingLeft ? Math.PI * 0.6 : -Math.PI * 0.4;
-    const endAngle = facingLeft ? Math.PI * 1.4 : Math.PI * 0.4;
+  public createSlashArc(
+    x: number,
+    y: number,
+    radius: number,
+    facingLeft: boolean,
+    color: string,
+    arcType: 'slash1' | 'slash2' | 'finisher' | 'downthrust' = 'slash1'
+  ): void {
+    let startAngle: number;
+    let endAngle: number;
+    let width: number = 14;
+    let life: number = 0.14;
+
+    if (arcType === 'slash2') {
+      // Cross slash (low-to-high reverse slice)
+      startAngle = facingLeft ? Math.PI * 1.3 : -Math.PI * 0.7;
+      endAngle = facingLeft ? Math.PI * 0.5 : Math.PI * 0.3;
+      width = 16;
+      life = 0.16;
+    } else if (arcType === 'finisher') {
+      // 3rd hit finisher: massive blazing sweep arc
+      startAngle = facingLeft ? Math.PI * 1.6 : -Math.PI * 0.6;
+      endAngle = facingLeft ? Math.PI * 0.2 : Math.PI * 0.8;
+      width = 22;
+      life = 0.22;
+    } else if (arcType === 'downthrust') {
+      // Down thrust: concentrated downward cone arc
+      startAngle = Math.PI * 0.2;
+      endAngle = Math.PI * 0.8;
+      width = 16;
+      life = 0.15;
+    } else {
+      // Standard slash 1 (high-to-low diagonal sweep)
+      startAngle = facingLeft ? Math.PI * 0.6 : -Math.PI * 0.4;
+      endAngle = facingLeft ? Math.PI * 1.4 : Math.PI * 0.4;
+      width = 14;
+      life = 0.14;
+    }
 
     this.slashArcs.push({
       x,
@@ -160,9 +248,9 @@ export class ParticleSystem {
       startAngle,
       endAngle,
       color,
-      life: 0.14,
-      maxLife: 0.14,
-      width: 14
+      life,
+      maxLife: life,
+      width
     });
   }
 
@@ -316,6 +404,56 @@ export class ParticleSystem {
     this.emitSparks(endX, endY, 15, '#70d6ff');
   }
 
+  public emitDirectionalSparks(
+    x: number,
+    y: number,
+    dirX: number,
+    dirY: number,
+    count: number = 16,
+    color: string = '#ffd166'
+  ): void {
+    const baseAngle = Math.atan2(dirY, dirX);
+    for (let i = 0; i < count; i++) {
+      const spread = (Math.random() - 0.5) * Math.PI * 0.7;
+      const angle = baseAngle + spread;
+      const speed = 180 + Math.random() * 320;
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color,
+        size: 3 + Math.random() * 3,
+        life: 0.22 + Math.random() * 0.22,
+        maxLife: 0.4,
+        alpha: 1,
+        shape: 'spark',
+        gravity: 240,
+        friction: 0.94
+      });
+    }
+  }
+
+  public emitCombatText(
+    x: number,
+    y: number,
+    text: string,
+    color: string = '#ffd166',
+    fontSize: number = 14
+  ): void {
+    this.floatingTexts.push({
+      x: x + (Math.random() - 0.5) * 12,
+      y: y - 10,
+      vy: -110 - Math.random() * 40,
+      text,
+      color,
+      fontSize,
+      life: 0.85,
+      maxLife: 0.85,
+      scale: 1.35
+    });
+  }
+
   public emitConfetti(x: number, y: number, count: number = 40): void {
     const colors = ['#ffd166', '#06d6a0', '#118ab2', '#ef476f', '#f72585', '#ffffff'];
     for (let i = 0; i < count; i++) {
@@ -342,5 +480,6 @@ export class ParticleSystem {
     this.particles = [];
     this.slashArcs = [];
     this.lightningBolts = [];
+    this.floatingTexts = [];
   }
 }

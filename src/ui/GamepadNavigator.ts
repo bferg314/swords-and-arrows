@@ -31,6 +31,7 @@ export class GamepadNavigator {
   private moveRepeatTimer: number = 0;
   private prevButtons: boolean[] = new Array(20).fill(false);
   private prevGamepadConfirm: Map<number, boolean> = new Map();
+  private prevLobbyJoinPress: Map<number, boolean> = new Map();
 
   // Focus element tracking
   private currentFocusedElement: HTMLElement | null = null;
@@ -427,6 +428,14 @@ export class GamepadNavigator {
     }
   }
 
+  public setLobbySlotFocus(slot: number, subIndex: number = 1): void {
+    this.lobbySlotIndex = Math.max(0, Math.min(3, slot));
+    this.lobbySubIndex = subIndex;
+    this.lobbyOnRulesBar = false;
+    this.lobbyOnBottomBar = false;
+    this.applyFocus();
+  }
+
   public scrollActiveContainer(deltaPx: number): void {
     let container: HTMLElement | null = null;
     if (this.currentScreen === 'maps') {
@@ -530,8 +539,59 @@ export class GamepadNavigator {
       if (hasStick || hasRightStick || pUp || pDown || pLeft || pRight || pA || pB || pX || pY || pStart) {
         this.setMouseActive(false);
         this.lastActiveGamepadIndex = gp.index;
-        this.inputManager?.setPrimaryGamepadIndex(gp.index);
-        this.inputManager?.bindPlayerGamepad(0, gp.index);
+        // Only register primary gamepad on Title Screen if slot 0 is not yet assigned.
+        // NEVER overwrite or rebind player controllers during podium, rematch, pause, or draft!
+        if (this.currentScreen === 'title' && this.inputManager && !this.inputManager.hasAssignedGamepad(0)) {
+          this.inputManager.setPrimaryGamepadIndex(gp.index);
+          this.inputManager.bindPlayerGamepad(0, gp.index);
+        }
+      }
+
+      // In the warrior lobby: if an unassigned controller presses A or Start, join as human!
+      const isConfirmPress = pA || pStart;
+      const prevJoinPress = this.prevLobbyJoinPress.get(gp.index) ?? false;
+      this.prevLobbyJoinPress.set(gp.index, isConfirmPress);
+
+      if (this.currentScreen === 'lobby' && isConfirmPress && !prevJoinPress && this.inputManager) {
+        let isAssignedToActiveHuman = false;
+        for (let s = 0; s < 4; s++) {
+          if (this.inputManager.getAssignedGamepad(s as any) === gp.index) {
+            const select = document.getElementById(`p${s + 1}-type`) as HTMLSelectElement;
+            const slotElem = document.getElementById(`slot-p${s + 1}`);
+            const isActive = slotElem?.classList.contains('active') ?? false;
+            const isHuman = select && !select.value.startsWith('cpu');
+            if (isActive && isHuman) {
+              isAssignedToActiveHuman = true;
+              break;
+            }
+          }
+        }
+
+        if (!isAssignedToActiveHuman) {
+          // If this controller matches a slot and the lobby cursor is actively on that slot,
+          // allow button A to interact normally with the focused menu control (e.g. cycle CPU difficulty or select color).
+          // Only trigger auto-join if:
+          // 1) The slot is currently inactive, OR
+          // 2) The cursor is NOT on this slot, OR
+          // 3) The player pressed the START button to join
+          const matchingSlot = gp.index >= 0 && gp.index <= 3 ? gp.index : null;
+          const isNavigatingOwnActiveSlot = (
+            matchingSlot !== null &&
+            !this.lobbyOnRulesBar &&
+            !this.lobbyOnBottomBar &&
+            this.lobbySlotIndex === matchingSlot &&
+            this.isSlotActive(matchingSlot) &&
+            pA && !pStart
+          );
+
+          if (!isNavigatingOwnActiveSlot) {
+            const joinedSlot = this.tryJoinLobbySlot(gp.index);
+            if (joinedSlot !== null) {
+              btnA = false;
+              btnStart = false;
+            }
+          }
+        }
       }
     }
 
@@ -745,10 +805,9 @@ export class GamepadNavigator {
           // Left / Right moves between player slots
           this.lobbySlotIndex = (this.lobbySlotIndex + dx + 4) % 4;
           const nextActive = this.isSlotActive(this.lobbySlotIndex);
-          const nextHasToggle = this.hasSlotToggle(this.lobbySlotIndex);
           if (!nextActive) {
             this.lobbySubIndex = 0;
-          } else if (!nextHasToggle && this.lobbySubIndex === 0) {
+          } else if (this.lobbySubIndex === 0) {
             this.lobbySubIndex = 1;
           }
           this.applyFocus();
@@ -1172,5 +1231,50 @@ export class GamepadNavigator {
       (el as HTMLElement).style.outlineColor = '';
       (el as HTMLElement).style.boxShadow = '';
     });
+  }
+
+  private tryJoinLobbySlot(gpIndex: number): number | null {
+    if (!this.inputManager) return null;
+
+    const joinSlot = (slot: number): number => {
+      const slotElem = document.getElementById(`slot-p${slot + 1}`);
+      const selectElem = document.getElementById(`p${slot + 1}-type`) as HTMLSelectElement;
+      const isActive = slotElem?.classList.contains('active') ?? false;
+
+      if (!isActive) {
+        document.getElementById(`toggle-p${slot + 1}`)?.click();
+      }
+
+      if (selectElem && selectElem.value !== 'human') {
+        selectElem.value = 'human';
+        selectElem.dispatchEvent(new Event('change'));
+      }
+
+      this.lobbySlotIndex = slot;
+      this.lobbySubIndex = 1; // Always focus directly on the TYPE dropdown
+      this.lobbyOnRulesBar = false;
+      this.lobbyOnBottomBar = false;
+      this.applyFocus();
+      return slot;
+    };
+
+    // 1. If this controller has a natural matching slot (0 -> P1, 1 -> P2, 2 -> P3, 3 -> P4):
+    if (gpIndex >= 0 && gpIndex <= 3) {
+      return joinSlot(gpIndex);
+    }
+
+    // 2. Fallback: find first inactive or CPU slot (1, 2, 3, 0)
+    for (const slot of [1, 2, 3, 0] as const) {
+      const slotElem = document.getElementById(`slot-p${slot + 1}`);
+      const selectElem = document.getElementById(`p${slot + 1}-type`) as HTMLSelectElement;
+      const isActive = slotElem?.classList.contains('active') ?? false;
+      const isCpu = selectElem ? selectElem.value.startsWith('cpu') : false;
+
+      if (!isActive || isCpu) {
+        return joinSlot(slot);
+      }
+    }
+
+    return null;
   }
 }

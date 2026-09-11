@@ -1,7 +1,7 @@
 import { Player } from './Player';
 import { PlayerInputState } from '../core/InputManager';
 import { Projectile } from './Projectile';
-import { Platform, HazardZone } from '../maps/MapTypes';
+import { Platform, HazardZone, MapBoundaryType } from '../maps/MapTypes';
 import { PowerUpDefinition } from '../powerups/PowerUpTypes';
 
 export class BotController {
@@ -16,6 +16,16 @@ export class BotController {
   private doubleJumpDelayTimer: number = 0;
   private airSteerDir: number = 0;
   private airSteerTimer: number = 0;
+
+  // Difficulty & Human-like hesitation timers
+  private hesitationTimer: number = 0;
+  private hesitationCooldown: number = 1.5;
+  private meleeReactionTimer: number = 0;
+  private meleeCooldownTimer: number = 0;
+  private aimErrorAngle: number = 0;
+  private aimErrorTimer: number = 0;
+  private weaponSwitchTimer: number = 0;
+  private hasTargetInRange: boolean = false;
 
   constructor(player: Player) {
     this.player = player;
@@ -71,8 +81,18 @@ export class BotController {
     x: number,
     y: number,
     platforms: Platform[],
-    hazards: HazardZone[]
+    hazards: HazardZone[],
+    boundaryType: MapBoundaryType = 'solid'
   ): boolean {
+    // If boundary is hazard, stepping too close to the edge is lethal/damaging
+    if (boundaryType === 'hazard' && (x <= 40 || x >= 1240)) {
+      return true;
+    }
+    // If boundary is open void, stepping outside arena bounds is an abyss fall
+    if (boundaryType === 'open' && (x <= 20 || x >= 1260)) {
+      return true;
+    }
+
     if (this.isOverHazard(x, y, platforms, hazards)) return true;
 
     // Check if there is NO platform below x all the way to bottom of map (abyss drop)
@@ -119,7 +139,8 @@ export class BotController {
     moveDir: number,
     currentPlat: Platform,
     platforms: Platform[],
-    hazards: HazardZone[]
+    hazards: HazardZone[],
+    boundaryType: MapBoundaryType = 'solid'
   ): { isHazardAhead: boolean; canJumpAcross: boolean; bestTargetPlat: Platform | null; needsDoubleJump: boolean } {
     const edgeX = moveDir > 0 ? currentPlat.x + currentPlat.w : currentPlat.x;
     const distToEdge = moveDir > 0 ? (edgeX - this.player.x) : (this.player.x - edgeX);
@@ -131,7 +152,7 @@ export class BotController {
 
     // Look at where stepping off will drop
     const stepOffX = edgeX + moveDir * 35;
-    const isHazardAhead = this.isLethalFall(stepOffX, currentPlat.y, platforms, hazards);
+    const isHazardAhead = this.isLethalFall(stepOffX, currentPlat.y, platforms, hazards, boundaryType);
 
     // Also check if stepping off drops into a deep gap (> 60px down to next ground)
     const hasCloseGroundBelow = platforms.some(p =>
@@ -183,11 +204,12 @@ export class BotController {
   private handleAirborneHazardRecovery(
     state: PlayerInputState,
     platforms: Platform[],
-    hazards: HazardZone[]
+    hazards: HazardZone[],
+    boundaryType: MapBoundaryType = 'solid'
   ): boolean {
     if (this.player.isGrounded) return false;
 
-    const isLethal = this.isLethalFall(this.player.x, this.player.y, platforms, hazards);
+    const isLethal = this.isLethalFall(this.player.x, this.player.y, platforms, hazards, boundaryType);
     if (!isLethal) return false;
 
     // Find nearest safe platform
@@ -266,7 +288,8 @@ export class BotController {
     allPlayers: Player[],
     projectiles: Projectile[],
     platforms: Platform[],
-    hazards: HazardZone[]
+    hazards: HazardZone[],
+    boundaryType: MapBoundaryType = 'solid'
   ): PlayerInputState {
     const state: PlayerInputState = {
       left: false,
@@ -290,9 +313,37 @@ export class BotController {
 
     if (!this.player.isAlive) return state;
 
+    const difficulty = this.player.cpuDifficulty;
+
     this.actionTimer += dt;
     this.jumpTimer += dt;
     this.attackDecisionTimer += dt;
+    this.meleeCooldownTimer = Math.max(0, this.meleeCooldownTimer - dt);
+    this.weaponSwitchTimer = Math.max(0, this.weaponSwitchTimer - dt);
+    this.aimErrorTimer = Math.max(0, this.aimErrorTimer - dt);
+
+    // Periodic hesitation (Novice pauses to think/breathe, Medium rarely, Hard never)
+    if (difficulty === 'easy') {
+      if (this.hesitationTimer > 0) {
+        this.hesitationTimer -= dt;
+      } else {
+        this.hesitationCooldown -= dt;
+        if (this.hesitationCooldown <= 0) {
+          this.hesitationTimer = 0.45 + Math.random() * 0.35;
+          this.hesitationCooldown = 2.0 + Math.random() * 2.0;
+        }
+      }
+    } else if (difficulty === 'med') {
+      if (this.hesitationTimer > 0) {
+        this.hesitationTimer -= dt;
+      } else {
+        this.hesitationCooldown -= dt;
+        if (this.hesitationCooldown <= 0) {
+          this.hesitationTimer = 0.2 + Math.random() * 0.15;
+          this.hesitationCooldown = 5.0 + Math.random() * 3.0;
+        }
+      }
+    }
 
     // ================= 0. JUMP HOLD & TIMED DOUBLE JUMP LOGIC =================
     // Hold jump button to achieve full variable jump height (prevents short hops)
@@ -322,14 +373,14 @@ export class BotController {
       if (this.airSteerTimer > 0) {
         this.airSteerTimer -= dt;
         if (this.airSteerDir > 0) {
-          if (!this.isLethalFall(this.player.x + 35, this.player.y + 50, platforms, hazards) || this.player.x < 1120) {
+          if (!this.isLethalFall(this.player.x + 35, this.player.y + 50, platforms, hazards, boundaryType) || this.player.x < 1120) {
             state.right = true;
             state.left = false;
           } else {
             this.airSteerTimer = 0;
           }
         } else if (this.airSteerDir < 0) {
-          if (!this.isLethalFall(this.player.x - 35, this.player.y + 50, platforms, hazards) || this.player.x > 160) {
+          if (!this.isLethalFall(this.player.x - 35, this.player.y + 50, platforms, hazards, boundaryType) || this.player.x > 160) {
             state.left = true;
             state.right = false;
           } else {
@@ -359,7 +410,9 @@ export class BotController {
     const dy = nearestOpponent.y - this.player.y;
 
     // ================= 2. PARRY DEFENSE =================
-    const parryReactionDist = this.player.cpuDifficulty === 'hard' ? 140 : (this.player.cpuDifficulty === 'med' ? 100 : 60);
+    const parryChance = difficulty === 'hard' ? 0.85 : (difficulty === 'med' ? 0.45 : 0.12);
+    const parryReactionDist = difficulty === 'hard' ? 140 : (difficulty === 'med' ? 95 : 45);
+
     for (const proj of projectiles) {
       if (!proj.isStuck && !proj.isDead && proj.ownerIndex !== this.player.index) {
         const pDist = Math.hypot(proj.x - this.player.x, proj.y - this.player.y);
@@ -368,21 +421,49 @@ export class BotController {
         const dot = proj.vx * toBotX + proj.vy * toBotY;
 
         if (pDist < parryReactionDist && dot > 0) {
-          if (this.player.currentWeapon !== 'sword') {
-            state.switchWeaponJustPressed = true;
+          if (difficulty === 'easy') {
+            // Novice bots only parry if they already hold sword AND roll low chance (no instant weapon-switch parry)
+            if (this.player.currentWeapon === 'sword' && Math.random() < parryChance) {
+              state.parryJustPressed = true;
+              state.parry = true;
+              return state;
+            }
+          } else if (difficulty === 'med') {
+            if (Math.random() < parryChance) {
+              if (this.player.currentWeapon !== 'sword' && Math.random() < 0.5) {
+                state.switchWeaponJustPressed = true;
+              }
+              if (this.player.currentWeapon === 'sword') {
+                state.parryJustPressed = true;
+                state.parry = true;
+                return state;
+              }
+            }
+          } else {
+            // Hard: immediate weapon switch and parry
+            if (Math.random() < parryChance) {
+              if (this.player.currentWeapon !== 'sword') {
+                state.switchWeaponJustPressed = true;
+              }
+              state.parryJustPressed = true;
+              state.parry = true;
+              return state;
+            }
           }
-          state.parryJustPressed = true;
-          state.parry = true;
-          return state;
         }
       }
     }
 
     // ================= 3. WEAPON SWITCHING =================
-    if (minDistance < 120 && this.player.currentWeapon !== 'sword') {
-      state.switchWeaponJustPressed = true;
-    } else if (minDistance > 200 && this.player.currentWeapon !== 'bow') {
-      state.switchWeaponJustPressed = true;
+    const switchCooldown = difficulty === 'hard' ? 0.2 : (difficulty === 'med' ? 0.8 : 2.2);
+    if (this.weaponSwitchTimer <= 0) {
+      if (minDistance < 100 && this.player.currentWeapon !== 'sword') {
+        state.switchWeaponJustPressed = true;
+        this.weaponSwitchTimer = switchCooldown;
+      } else if (minDistance > 220 && this.player.currentWeapon !== 'bow') {
+        state.switchWeaponJustPressed = true;
+        this.weaponSwitchTimer = switchCooldown;
+      }
     }
 
     // ================= 4. MOVEMENT & NAVIGATION =================
@@ -390,17 +471,18 @@ export class BotController {
     const currentPlat = this.getCurrentPlatform(platforms);
 
     // Check if airborne and over hazard (immediate emergency recovery)
-    const isRecovering = this.handleAirborneHazardRecovery(state, platforms, hazards);
+    const isRecovering = this.handleAirborneHazardRecovery(state, platforms, hazards, boundaryType);
+    const isHesitating = this.hesitationTimer > 0 && this.player.isGrounded;
 
     if (!isRecovering) {
-      if (this.airSteerTimer <= 0 && moveDir !== 0) {
+      if (!isHesitating && this.airSteerTimer <= 0 && moveDir !== 0) {
         if (moveDir > 0) state.right = true;
         else state.left = true;
       }
 
       // If grounded on a platform, check the ledge ahead for hazards / gaps!
-      if (currentPlat && moveDir !== 0) {
-        const ledgeCheck = this.evaluateLedgeAhead(moveDir, currentPlat, platforms, hazards);
+      if (currentPlat && moveDir !== 0 && !isHesitating) {
+        const ledgeCheck = this.evaluateLedgeAhead(moveDir, currentPlat, platforms, hazards, boundaryType);
         if (ledgeCheck.isHazardAhead || ledgeCheck.canJumpAcross) {
           if (ledgeCheck.canJumpAcross && this.jumpTimer > 0.2) {
             // Long jump across the gap, followed by a double jump if needed!
@@ -438,13 +520,14 @@ export class BotController {
       }
 
       // Vertical navigation: Jump or Drop through
-      if (dy < -60 && this.jumpTimer > 0.45) {
+      const jumpPursuitDelay = difficulty === 'hard' ? 0.35 : (difficulty === 'med' ? 0.55 : 0.95);
+      if (dy < -60 && this.jumpTimer > jumpPursuitDelay && !isHesitating) {
         // Opponent is above: Long jump, followed by a double jump if opponent is high up
         const needsDouble = dy < -90;
         this.triggerJump(0.30, needsDouble, moveDir);
         state.jump = true;
         state.jumpJustPressed = true;
-      } else if (dy > 80 && this.player.isGrounded && Math.random() < 0.04) {
+      } else if (dy > 80 && this.player.isGrounded && Math.random() < (difficulty === 'easy' ? 0.02 : 0.04)) {
         // Opponent is below: ONLY drop through if there is safe ground beneath!
         if (currentPlat && currentPlat.oneWay) {
           const isHazardBelow = this.isLethalFall(this.player.x, currentPlat.y + currentPlat.h + 15, platforms, hazards);
@@ -456,7 +539,9 @@ export class BotController {
       }
 
       // Tactical dash to close gap or evade when on safe terrain
-      if (minDistance < 180 && minDistance > 80 && Math.random() < 0.03 && !this.isLethalFall(this.player.x + (moveDir * 120), this.player.y, platforms, hazards)) {
+      // Novice never dashes in combat; Medium occasionally, Hard frequently
+      const dashChance = difficulty === 'hard' ? 0.04 : (difficulty === 'med' ? 0.015 : 0.0);
+      if (!isHesitating && dashChance > 0 && minDistance < 180 && minDistance > 80 && Math.random() < dashChance && !this.isLethalFall(this.player.x + (moveDir * 120), this.player.y, platforms, hazards)) {
         state.dashJustPressed = true;
         state.dash = true;
       }
@@ -464,26 +549,75 @@ export class BotController {
 
     // ================= 5. COMBAT ACTIONS =================
     if (this.player.currentWeapon === 'sword') {
-      // Melee attack when in range
-      if (minDistance < 70 && Math.abs(dy) < 40) {
+      // Aerial Down-thrust pogo: if airborne directly above opponent, dive strike!
+      const isAboveOpponent = !this.player.isGrounded && dy > 30 && dy < 140 && Math.abs(dx) < 42 && this.player.vy > 30;
+      if (isAboveOpponent && (difficulty === 'hard' || (difficulty === 'med' && Math.random() < 0.6))) {
+        state.down = true;
         state.attackJustPressed = true;
         state.attack = true;
+        this.meleeCooldownTimer = 0.35;
+      } else {
+        // Melee attack when in range
+        const inMeleeRange = minDistance < 65 && Math.abs(dy) < 38;
+        if (inMeleeRange) {
+          if (!this.hasTargetInRange) {
+            this.hasTargetInRange = true;
+            // Reaction time before swinging: Novices hesitate for ~0.45s before attacking
+            this.meleeReactionTimer = difficulty === 'hard' ? 0.04 : (difficulty === 'med' ? 0.16 : 0.45);
+          }
+
+          if (this.meleeReactionTimer > 0) {
+            this.meleeReactionTimer -= dt;
+          } else if (this.meleeCooldownTimer <= 0) {
+            state.attackJustPressed = true;
+            state.attack = true;
+            // Interval between consecutive swings: Hard chains combos rapidly, Med chains moderately
+            this.meleeCooldownTimer = difficulty === 'hard' ? 0.18 : (difficulty === 'med' ? 0.32 : 0.85);
+          }
+        } else {
+          this.hasTargetInRange = false;
+          this.meleeReactionTimer = 0;
+        }
       }
     } else {
-      // Ranged bow combat with lead calculation
-      const leadX = dx + nearestOpponent.vx * 0.15;
-      const leadY = dy + nearestOpponent.vy * 0.15;
-      const len = Math.hypot(leadX, leadY) || 1;
+      // Ranged bow combat with lead calculation & inaccuracy
+      const leadMultiplier = difficulty === 'hard' ? 0.18 : (difficulty === 'med' ? 0.08 : 0.0);
+      const leadX = dx + nearestOpponent.vx * leadMultiplier;
+      const leadY = dy + nearestOpponent.vy * leadMultiplier;
 
-      state.aimX = leadX / len;
-      state.aimY = leadY / len;
+      // Update aim jitter for human-like inaccuracy
+      if (this.aimErrorTimer <= 0) {
+        if (difficulty === 'easy') {
+          // Novice has significant spread: ±0.32 rad (~18 degrees)
+          this.aimErrorAngle = (Math.random() - 0.5) * 0.64;
+          this.aimErrorTimer = 0.5 + Math.random() * 0.4;
+        } else if (difficulty === 'med') {
+          // Medium has minor spread: ±0.09 rad (~5 degrees)
+          this.aimErrorAngle = (Math.random() - 0.5) * 0.18;
+          this.aimErrorTimer = 0.6;
+        } else {
+          this.aimErrorAngle = 0;
+          this.aimErrorTimer = 1.0;
+        }
+      }
 
-      if (!this.player.isDrawingBow && this.attackDecisionTimer > 0.6) {
+      // Rotate aim vector by aimErrorAngle
+      const cosA = Math.cos(this.aimErrorAngle);
+      const sinA = Math.sin(this.aimErrorAngle);
+      const rawAimX = leadX * cosA - leadY * sinA;
+      const rawAimY = leadX * sinA + leadY * cosA;
+      const len = Math.hypot(rawAimX, rawAimY) || 1;
+
+      state.aimX = rawAimX / len;
+      state.aimY = rawAimY / len;
+
+      const fireInterval = difficulty === 'hard' ? 0.50 : (difficulty === 'med' ? 0.85 : 1.80);
+      if (!this.player.isDrawingBow && this.attackDecisionTimer > fireInterval) {
         state.attack = true;
         state.attackJustPressed = true;
         this.attackDecisionTimer = 0;
       } else if (this.player.isDrawingBow) {
-        const targetCharge = this.player.cpuDifficulty === 'hard' ? 0.9 : 0.65;
+        const targetCharge = difficulty === 'hard' ? 0.90 : (difficulty === 'med' ? 0.65 : 0.42);
         if (this.player.bowDrawCharge >= targetCharge) {
           state.attack = false;
           state.attackJustReleased = true;

@@ -23,6 +23,7 @@ pnpm-debug.log*
 Thumbs.db
 ehthumbs.db
 .idea/
+.vscode/
 *.suo
 *.ntvs*
 *.njsproj

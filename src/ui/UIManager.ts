@@ -24,8 +24,8 @@ export class UIManager {
   private playerConfigs: GamePlayerConfig[] = [
     { slot: 0, active: true, name: 'Player 1', color: '#e63946', type: 'human' },
     { slot: 1, active: true, name: 'Player 2', color: '#4361ee', type: 'cpu-med' },
-    { slot: 2, active: false, name: 'Player 3', color: '#2ec4b6', type: 'cpu-med' },
-    { slot: 3, active: false, name: 'Player 4', color: '#ffb703', type: 'cpu-med' }
+    { slot: 2, active: false, name: 'Player 3', color: '#2ec4b6', type: 'cpu-easy' },
+    { slot: 3, active: false, name: 'Player 4', color: '#ffb703', type: 'cpu-easy' }
   ];
   private selectedMapId: string = 'random';
   private targetWins: number = 3;
@@ -89,6 +89,7 @@ export class UIManager {
     document.getElementById('btn-pause-menu')?.addEventListener('click', () => {
       this.game.resume();
       this.showScreen('title');
+      this.game.input.resetAllControllerAssignments();
     });
 
     this.gamepadNav.onTogglePauseRequested = () => {
@@ -131,6 +132,7 @@ export class UIManager {
     // Lobby buttons
     document.getElementById('btn-lobby-back')?.addEventListener('click', () => {
       this.showScreen('title');
+      this.game.input.resetAllControllerAssignments();
     });
 
     document.getElementById('btn-lobby-fight')?.addEventListener('click', () => {
@@ -158,6 +160,7 @@ export class UIManager {
 
     document.getElementById('btn-main-menu')?.addEventListener('click', () => {
       this.showScreen('title');
+      this.game.input.resetAllControllerAssignments();
     });
 
     // Lobby Slot toggles (P3, P4)
@@ -166,11 +169,19 @@ export class UIManager {
 
     // Type Selectors
     (document.getElementById('p1-type') as HTMLSelectElement)?.addEventListener('change', (e) => {
-      this.playerConfigs[0].type = (e.target as HTMLSelectElement).value as any;
+      const val = (e.target as HTMLSelectElement).value as any;
+      this.playerConfigs[0].type = val;
+      this.game.input.ensureHumanGamepadAssignments(this.playerConfigs);
+      this.updateSpritePreviews();
+      this.updateLobbyGamepadBadges();
     });
 
     (document.getElementById('p2-type') as HTMLSelectElement)?.addEventListener('change', (e) => {
-      this.playerConfigs[1].type = (e.target as HTMLSelectElement).value as any;
+      const val = (e.target as HTMLSelectElement).value as any;
+      this.playerConfigs[1].type = val;
+      this.game.input.ensureHumanGamepadAssignments(this.playerConfigs);
+      this.updateSpritePreviews();
+      this.updateLobbyGamepadBadges();
     });
 
     // Color swatches
@@ -201,6 +212,8 @@ export class UIManager {
           textElem.style.color = '#94a3b8';
         }
       }
+      this.game.input.ensureHumanGamepadAssignments(this.playerConfigs);
+      this.updateLobbyGamepadBadges();
     }, 1000);
   }
 
@@ -228,20 +241,30 @@ export class UIManager {
         body?.classList.remove('hidden');
         placeholder?.classList.add('hidden');
         slotElem?.classList.add('active');
+        if (selectElem) {
+          selectElem.value = 'cpu-easy';
+          this.playerConfigs[slotIndex].type = 'cpu-easy';
+        }
+        this.gamepadNav.setLobbySlotFocus(slotIndex, 1);
       } else {
         toggleBtn.textContent = '+ ADD';
         toggleBtn.style.color = '#ffd166';
         body?.classList.add('hidden');
         placeholder?.classList.remove('hidden');
         slotElem?.classList.remove('active');
+        this.gamepadNav.setLobbySlotFocus(slotIndex, 0);
       }
+      this.game.input.ensureHumanGamepadAssignments(this.playerConfigs);
       this.updateSpritePreviews();
-      this.gamepadNav.applyFocus();
+      this.updateLobbyGamepadBadges();
     });
 
     selectElem?.addEventListener('change', (e) => {
-      this.playerConfigs[slotIndex].type = (e.target as HTMLSelectElement).value as any;
+      const val = (e.target as HTMLSelectElement).value as any;
+      this.playerConfigs[slotIndex].type = val;
+      this.game.input.ensureHumanGamepadAssignments(this.playerConfigs);
       this.updateSpritePreviews();
+      this.updateLobbyGamepadBadges();
     });
   }
 
@@ -255,21 +278,47 @@ export class UIManager {
     randomCard.className = `map-card ${this.selectedMapId === 'random' ? 'selected' : ''}`;
     randomCard.innerHTML = `
       <div class="map-card-thumb" style="background: linear-gradient(135deg, #1e293b, #0f172a)">🎲</div>
-      <div class="map-card-title">Random Rotation</div>
-      <div class="map-card-hazard">Rotates across all 15 arena maps between each round!</div>
+      <div class="map-card-header">
+        <div class="map-card-title">Random Rotation</div>
+        <span class="map-boundary-badge boundary-random">🎲 Dynamic Walls</span>
+      </div>
+      <div class="map-card-hazard">Rotates across all 15 arena maps with unique edge dynamics!</div>
     `;
     randomCard.addEventListener('click', () => {
       this.selectMap('random', 'Random Rotation');
     });
     grid.appendChild(randomCard);
 
-    // 2. All 12 Maps
+    // 2. All 15 Maps
     ARENA_MAPS.forEach(map => {
       const card = document.createElement('div');
       card.className = `map-card ${this.selectedMapId === map.id ? 'selected' : ''}`;
+
+      let badgeLabel = '🧱 Solid Walls';
+      let badgeClass = 'boundary-solid';
+      if (map.boundaryType === 'portal') {
+        badgeLabel = '🌀 Warp Portal';
+        badgeClass = 'boundary-portal';
+      } else if (map.boundaryType === 'hazard') {
+        badgeLabel = map.boundaryTheme === 'hazard-electric' ? '⚡ Electric Wall' : '🔥 Magma Barrier';
+        badgeClass = 'boundary-hazard';
+      } else if (map.boundaryType === 'bouncy') {
+        badgeLabel = '🦘 Kinetic Bounce';
+        badgeClass = 'boundary-bouncy';
+      } else if (map.boundaryType === 'updraft') {
+        badgeLabel = '🌪️ Gale Updraft';
+        badgeClass = 'boundary-updraft';
+      } else if (map.boundaryType === 'open') {
+        badgeLabel = '☁️ Open Void';
+        badgeClass = 'boundary-open';
+      }
+
       card.innerHTML = `
         <div class="map-card-thumb" style="background: linear-gradient(135deg, ${map.bgGradient[0]}, ${map.bgGradient[1]})">${map.icon}</div>
-        <div class="map-card-title">${map.name}</div>
+        <div class="map-card-header">
+          <div class="map-card-title">${map.name}</div>
+          <span class="map-boundary-badge ${badgeClass}">${badgeLabel}</span>
+        </div>
         <div class="map-card-hazard">${map.hazardDescription}</div>
       `;
       card.addEventListener('click', () => {
@@ -326,7 +375,9 @@ export class UIManager {
     if (screen === 'title') this.titleScreen.classList.remove('hidden');
     else if (screen === 'lobby') {
       this.lobbyScreen.classList.remove('hidden');
+      this.game.input.ensureHumanGamepadAssignments(this.playerConfigs);
       this.updateSpritePreviews();
+      this.updateLobbyGamepadBadges();
     }
     else if (screen === 'maps') this.mapSelectScreen.classList.remove('hidden');
     else if (screen === 'controls') this.controlsScreen.classList.remove('hidden');
@@ -402,6 +453,49 @@ export class UIManager {
 
       ctx.restore();
       container.appendChild(canvas);
+    });
+  }
+
+  public updateLobbyGamepadBadges(): void {
+    const keyLabels = ['⌨️ / 🎮', '⌨️ Arrows', '⌨️ IJKL', '⌨️ Num'];
+    const kbShortNames = ['WASD', 'Arrows', 'IJKL', 'Numpad'];
+    this.playerConfigs.forEach((cfg, idx) => {
+      const slotHeader = document.querySelector(`#slot-p${idx + 1} .slot-status`) as HTMLElement;
+      const select = document.getElementById(`p${idx + 1}-type`) as HTMLSelectElement;
+      const gpIdx = this.game.input.getAssignedGamepad(idx as any);
+
+      // Dynamically sync Human option text in the dropdown with actual assigned controller!
+      if (select) {
+        const humanOpt = select.querySelector('option[value="human"]') as HTMLOptionElement;
+        if (humanOpt) {
+          if (gpIdx !== undefined) {
+            humanOpt.textContent = `Human (🎮 GP ${gpIdx + 1})`;
+          } else {
+            humanOpt.textContent = `Human (⌨️ ${kbShortNames[idx]})`;
+          }
+        }
+      }
+
+      if (!slotHeader) return;
+      if (!cfg.active) {
+        slotHeader.textContent = 'OFF';
+        slotHeader.classList.add('hidden');
+        slotHeader.className = 'slot-status hidden';
+        return;
+      }
+      slotHeader.classList.remove('hidden');
+      if (cfg.type.startsWith('cpu')) {
+        slotHeader.textContent = 'CPU';
+        slotHeader.className = 'slot-status status-cpu';
+      } else {
+        if (gpIdx !== undefined) {
+          slotHeader.textContent = `🎮 GP ${gpIdx + 1}`;
+          slotHeader.className = 'slot-status status-gamepad';
+        } else {
+          slotHeader.textContent = keyLabels[idx] || 'READY';
+          slotHeader.className = 'slot-status status-keyboard';
+        }
+      }
     });
   }
 

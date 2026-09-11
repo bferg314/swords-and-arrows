@@ -31,6 +31,18 @@ export class InputManager {
   private primaryGamepadIndex: number | null = null;
   private isSingleHumanMatch: boolean = true;
 
+  // Mouse aiming & attack support for PC / Player 1
+  private mouseCanvasX: number = 640;
+  private mouseCanvasY: number = 360;
+  private isMouseDown: boolean = false;
+  private mouseJustPressed: boolean = false;
+  private mouseJustReleased: boolean = false;
+  private isMouseAiming: boolean = false;
+  private p1WorldX: number = 640;
+  private p1WorldY: number = 360;
+  private camera: { screenToWorld: (sx: number, sy: number) => { x: number; y: number } } | null = null;
+  private canvas: HTMLCanvasElement | null = null;
+
   constructor() {
     window.addEventListener('keydown', (e) => {
       if (!this.keysDown.has(e.code)) {
@@ -43,6 +55,44 @@ export class InputManager {
       this.keysDown.delete(e.code);
       this.keysJustReleased.add(e.code);
     });
+
+    window.addEventListener('mousemove', (e) => {
+      this.isMouseAiming = true;
+      if (!this.canvas) {
+        this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
+      }
+      if (this.canvas) {
+        const rect = this.canvas.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          this.mouseCanvasX = (e.clientX - rect.left) * (1280 / rect.width);
+          this.mouseCanvasY = (e.clientY - rect.top) * (720 / rect.height);
+        }
+      }
+    });
+
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) { // Left click
+        this.isMouseDown = true;
+        this.mouseJustPressed = true;
+        this.isMouseAiming = true;
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) {
+        this.isMouseDown = false;
+        this.mouseJustReleased = true;
+      }
+    });
+  }
+
+  public setCamera(camera: { screenToWorld: (sx: number, sy: number) => { x: number; y: number } }): void {
+    this.camera = camera;
+  }
+
+  public setP1WorldPos(x: number, y: number): void {
+    this.p1WorldX = x;
+    this.p1WorldY = y;
   }
 
   public setSingleHumanMatch(isSingle: boolean): void {
@@ -51,13 +101,36 @@ export class InputManager {
 
   public setPrimaryGamepadIndex(index: number | null): void {
     this.primaryGamepadIndex = index;
-    if (index !== null) {
+    if (index !== null && !this.assignedGamepads.has(0)) {
       this.assignedGamepads.set(0, index);
     }
   }
 
   public bindPlayerGamepad(slot: PlayerSlot, gpIndex: number): void {
+    // Remove gpIndex from any other slot to avoid duplicates
+    for (const [s, idx] of this.assignedGamepads.entries()) {
+      if (idx === gpIndex && s !== slot) {
+        this.assignedGamepads.delete(s);
+      }
+    }
     this.assignedGamepads.set(slot, gpIndex);
+  }
+
+  public unbindPlayerGamepad(slot: PlayerSlot): void {
+    this.assignedGamepads.delete(slot);
+  }
+
+  public getAssignedGamepad(slot: PlayerSlot): number | undefined {
+    return this.assignedGamepads.get(slot);
+  }
+
+  public hasAssignedGamepad(slot: PlayerSlot): boolean {
+    return this.assignedGamepads.has(slot);
+  }
+
+  public resetAllControllerAssignments(): void {
+    this.assignedGamepads.clear();
+    this.primaryGamepadIndex = null;
   }
 
   public resetMatchInput(): void {
@@ -66,12 +139,79 @@ export class InputManager {
     this.keysJustPressed.clear();
     this.keysJustReleased.clear();
 
-    // Preserve primaryGamepadIndex and slot 0 assignment, but clear other slots
-    // so new human players can be cleanly bound without stale mappings
-    const p1Index = this.primaryGamepadIndex;
-    this.assignedGamepads.clear();
-    if (p1Index !== null) {
-      this.assignedGamepads.set(0, p1Index);
+    // NOTE: Do NOT clear assignedGamepads! Once assigned, controllers persist
+    // across matches and rematches so players never get swapped.
+  }
+
+  public ensureHumanGamepadAssignments(playerConfigs: { slot: number; active: boolean; type: string }[]): void {
+    const validGamepads = this.getValidGamepads();
+
+    const humanSlots = playerConfigs
+      .filter(cfg => cfg.active && !cfg.type.startsWith('cpu'))
+      .map(cfg => cfg.slot as PlayerSlot)
+      .sort((a, b) => a - b);
+
+    // 1. Clean up slots that are no longer active human
+    for (const [slot] of this.assignedGamepads.entries()) {
+      if (!humanSlots.includes(slot)) {
+        this.assignedGamepads.delete(slot);
+      }
+    }
+
+    if (validGamepads.length === 0 || humanSlots.length === 0) {
+      if (humanSlots.length === 0) {
+        this.assignedGamepads.clear();
+      }
+      return;
+    }
+
+    const usedIndices = new Set<number>();
+    const assignedSlots = new Set<PlayerSlot>();
+
+    // 2. Exact match phase:
+    // If a connected gamepad has index === slot for an active human slot,
+    // that gamepad belongs to this player slot! (GP 1 -> P1, GP 2 -> P2, GP 3 -> P3, GP 4 -> P4)
+    for (const slot of humanSlots) {
+      const exactGp = validGamepads.find(g => g.index === slot);
+      if (exactGp) {
+        this.assignedGamepads.set(slot, exactGp.index);
+        usedIndices.add(exactGp.index);
+        assignedSlots.add(slot);
+        if (slot === 0 && this.primaryGamepadIndex === null) {
+          this.primaryGamepadIndex = exactGp.index;
+        }
+      }
+    }
+
+    // 3. For any active human slots without an exact match:
+    // Retain their current valid assignment if it is still connected and not claimed by an exact match
+    for (const slot of humanSlots) {
+      if (!assignedSlots.has(slot)) {
+        const prevAssigned = this.assignedGamepads.get(slot);
+        if (prevAssigned !== undefined && validGamepads.some(g => g.index === prevAssigned) && !usedIndices.has(prevAssigned)) {
+          usedIndices.add(prevAssigned);
+          assignedSlots.add(slot);
+        }
+      }
+    }
+
+    // 4. For any remaining unassigned human slots in slot order (P1 -> P2 -> P3 -> P4):
+    // Allocate remaining available gamepads without collision
+    for (const slot of humanSlots) {
+      if (!assignedSlots.has(slot)) {
+        const nextAvailable = validGamepads.find(g => !usedIndices.has(g.index));
+        if (nextAvailable) {
+          this.assignedGamepads.set(slot, nextAvailable.index);
+          usedIndices.add(nextAvailable.index);
+          assignedSlots.add(slot);
+          if (slot === 0 && this.primaryGamepadIndex === null) {
+            this.primaryGamepadIndex = nextAvailable.index;
+          }
+        } else {
+          // No gamepad available -> clear so slot cleanly uses keyboard
+          this.assignedGamepads.delete(slot);
+        }
+      }
     }
   }
 
@@ -109,48 +249,25 @@ export class InputManager {
     const validGamepads = this.getValidGamepads();
     if (validGamepads.length === 0) return null;
 
-    // 1. Single-human match (Human vs Bots):
-    // In a solo match, Player 1 should be controllable by the primary gamepad OR ANY actively used controller!
-    if (this.isSingleHumanMatch && slot === 0) {
-      // Check if any controller has active button presses or stick movement this frame
-      for (const gp of validGamepads) {
-        const hasButton = gp.buttons.some(b => b && b.pressed);
-        const hasStick = Math.hypot(gp.axes[0] || 0, gp.axes[1] || 0) > 0.35;
-        if (hasButton || hasStick) {
-          this.primaryGamepadIndex = gp.index;
-          this.assignedGamepads.set(0, gp.index);
-          return gp;
-        }
-      }
-
-      // If no gamepad currently has active input this frame, return primary controller if still connected
-      if (this.primaryGamepadIndex !== null) {
-        const primary = validGamepads.find(g => g.index === this.primaryGamepadIndex);
-        if (primary) return primary;
-      }
-
-      // Default to the first valid gamepad
-      return validGamepads[0];
-    }
-
-    // 2. Multi-human couch co-op / PvP match:
-    // Check if slot has an explicitly assigned gamepad that is still connected
+    // 1. Check if slot has an explicitly assigned gamepad that is still connected
     const assignedIndex = this.assignedGamepads.get(slot);
     if (assignedIndex !== undefined) {
       const found = validGamepads.find(g => g.index === assignedIndex);
       if (found) return found;
     }
 
-    // Slot 0 defaults to primaryGamepadIndex if available
-    if (slot === 0 && this.primaryGamepadIndex !== null) {
-      const primary = validGamepads.find(g => g.index === this.primaryGamepadIndex);
-      if (primary) {
-        this.assignedGamepads.set(0, primary.index);
-        return primary;
+    // 2. Single-human match (Human vs Bots):
+    // In a solo match, Player 1 should be controllable by the primary gamepad or first gamepad
+    if (this.isSingleHumanMatch && slot === 0) {
+      if (this.primaryGamepadIndex !== null) {
+        const primary = validGamepads.find(g => g.index === this.primaryGamepadIndex);
+        if (primary) return primary;
       }
+      return validGamepads[0];
     }
 
-    // Resolve unassigned controllers without collision
+    // 3. Multi-human couch co-op / PvP match:
+    // If not yet assigned, assign from available unassigned gamepads without collision
     const usedIndices = new Set<number>();
     for (const [otherSlot, gpIdx] of this.assignedGamepads.entries()) {
       if (otherSlot !== slot) {
@@ -160,23 +277,13 @@ export class InputManager {
 
     const available = validGamepads.filter(g => !usedIndices.has(g.index));
     if (available.length > 0) {
-      // Check if any available controller is actively pressing something
-      for (const gp of available) {
-        const hasButton = gp.buttons.some(b => b && b.pressed);
-        const hasStick = Math.hypot(gp.axes[0] || 0, gp.axes[1] || 0) > 0.35;
-        if (hasButton || hasStick) {
-          this.assignedGamepads.set(slot, gp.index);
-          return gp;
-        }
-      }
-
-      // Otherwise take the first available
-      this.assignedGamepads.set(slot, available[0].index);
-      return available[0];
+      const matchingGp = available.find(g => g.index === slot);
+      const chosen = matchingGp || available[0];
+      this.assignedGamepads.set(slot, chosen.index);
+      return chosen;
     }
 
-    // Fallback
-    return validGamepads[slot] || validGamepads[0] || null;
+    return null;
   }
 
   public setVirtualInput(playerIndex: PlayerSlot, input: PlayerInputState | null): void {
@@ -301,6 +408,29 @@ export class InputManager {
 
     state.aimX = ax;
     state.aimY = ay;
+
+    // For Player 1: if mouse is active, calculate precise continuous 360 aim from character to cursor
+    if (slot === 0 && this.isMouseAiming && this.camera) {
+      const worldMouse = this.camera.screenToWorld(this.mouseCanvasX, this.mouseCanvasY);
+      const mDx = worldMouse.x - this.p1WorldX;
+      const mDy = worldMouse.y - this.p1WorldY;
+      const mDist = Math.hypot(mDx, mDy);
+      if (mDist > 12) {
+        state.aimX = mDx / mDist;
+        state.aimY = mDy / mDist;
+      }
+
+      // Mouse left-click triggers attack (draw & release bow, sword combo)
+      if (this.isMouseDown) {
+        state.attack = true;
+      }
+      if (this.mouseJustPressed) {
+        state.attackJustPressed = true;
+      }
+      if (this.mouseJustReleased) {
+        state.attackJustReleased = true;
+      }
+    }
   }
 
   private readGamepad(slot: PlayerSlot, state: PlayerInputState): void {
@@ -359,10 +489,25 @@ export class InputManager {
       if (!prev[4] && !prev[6] && !prev[7]) state.dashJustPressed = true;
     }
 
-    // Analog stick aim
-    if (Math.hypot(stickX, stickY) > deadzone) {
+    // Analog stick & D-pad aim
+    const rightStickX = gp.axes[2] || 0;
+    const rightStickY = gp.axes[3] || 0;
+
+    if (Math.hypot(rightStickX, rightStickY) > deadzone) {
+      state.aimX = rightStickX;
+      state.aimY = rightStickY;
+    } else if (Math.hypot(stickX, stickY) > deadzone) {
       state.aimX = stickX;
       state.aimY = stickY;
+    } else if (dpadLeft || dpadRight || dpadUp || dpadDown) {
+      let dX = 0;
+      let dY = 0;
+      if (dpadLeft) dX -= 1;
+      if (dpadRight) dX += 1;
+      if (dpadUp) dY -= 1;
+      if (dpadDown) dY += 1;
+      state.aimX = dX;
+      state.aimY = dY;
     }
 
     // Save buttons for next frame edge detection
@@ -381,5 +526,7 @@ export class InputManager {
   public endFrame(): void {
     this.keysJustPressed.clear();
     this.keysJustReleased.clear();
+    this.mouseJustPressed = false;
+    this.mouseJustReleased = false;
   }
 }
