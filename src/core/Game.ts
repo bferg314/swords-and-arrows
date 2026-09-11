@@ -2,6 +2,7 @@ import { Camera } from './Camera';
 import { InputManager } from './InputManager';
 import { SoundEngine } from './SoundEngine';
 import { ParticleSystem } from './ParticleSystem';
+import { EnvironmentRenderer } from './EnvironmentRenderer';
 import { ArenaMap } from '../maps/MapTypes';
 import { ARENA_MAPS, getRandomMap, getMapById } from '../maps/MapRegistry';
 import { Player } from '../entities/Player';
@@ -27,6 +28,7 @@ export class Game {
   public input: InputManager;
   public sound: SoundEngine;
   public particles: ParticleSystem;
+  public envRenderer: EnvironmentRenderer;
 
   public state: GameState = 'lobby';
   public currentMap: ArenaMap;
@@ -53,6 +55,10 @@ export class Game {
   // Pause State
   public isPaused: boolean = false;
 
+  // Cinematic Slow-Motion
+  public timeScale: number = 1.0;
+  private slowMoTimer: number = 0;
+
   // UI callbacks
   public onHudUpdate?: (game: Game) => void;
   public onRoundAnnounce?: (title: string, sub: string) => void;
@@ -67,10 +73,13 @@ export class Game {
     this.ctx = canvas.getContext('2d')!;
     this.camera = new Camera();
     this.input = new InputManager();
+    this.input.setCamera(this.camera);
     this.sound = new SoundEngine();
     this.particles = new ParticleSystem();
+    this.envRenderer = new EnvironmentRenderer();
 
     this.currentMap = ARENA_MAPS[0];
+    this.envRenderer.initMap(this.currentMap);
   }
 
   public initMatch(playerConfigs: GamePlayerConfig[], mapId: string = 'random', targetWins: number = 3, roundHp: number = 3): void {
@@ -82,12 +91,14 @@ export class Game {
     this.matchWinner = null;
     this.roundWinner = null;
     this.isPaused = false;
+    this.timeScale = 1.0;
+    this.slowMoTimer = 0;
     this.projectiles = [];
     this.particles.clear();
-    this.input.resetMatchInput();
-
     const humanCount = playerConfigs.filter(cfg => cfg.active && !cfg.type.startsWith('cpu')).length;
     this.input.setSingleHumanMatch(humanCount <= 1);
+    this.input.ensureHumanGamepadAssignments(playerConfigs);
+    this.input.resetMatchInput();
 
     // Select arena map
     if (mapId === 'random') {
@@ -95,6 +106,7 @@ export class Game {
     } else {
       this.currentMap = getMapById(mapId) || ARENA_MAPS[0];
     }
+    this.envRenderer.initMap(this.currentMap);
 
     // Instantiate players
     this.players = [];
@@ -116,9 +128,18 @@ export class Game {
     this.startRound();
   }
 
+  public triggerSlowMo(scale: number = 0.18, duration: number = 0.42): void {
+    this.timeScale = scale;
+    this.slowMoTimer = duration;
+    this.sound.playSlowMoLethal();
+    this.camera.addTrauma(0.5);
+  }
+
   public startRound(): void {
     this.state = 'playing';
     this.roundWinner = null;
+    this.timeScale = 1.0;
+    this.slowMoTimer = 0;
     this.projectiles = [];
     this.particles.clear();
     this.camera.reset();
@@ -127,6 +148,7 @@ export class Game {
     if (this.selectedMapId === 'random' && this.roundNumber > 1) {
       this.currentMap = getRandomMap();
     }
+    this.envRenderer.initMap(this.currentMap);
 
     // Reset platforms (e.g. crumble blocks)
     for (const plat of this.currentMap.platforms) {
@@ -163,9 +185,19 @@ export class Game {
       return;
     }
 
+    // Slow-motion timer tick
+    if (this.slowMoTimer > 0) {
+      this.slowMoTimer -= dt;
+      if (this.slowMoTimer <= 0) {
+        this.timeScale = 1.0;
+      }
+    }
+
+    const scaledDt = dt * this.timeScale;
+
     // 1. Update Game Loop based on State
     if (this.state === 'playing') {
-      this.updateBattle(dt);
+      this.updateBattle(scaledDt);
     } else if (this.state === 'round-end') {
       this.roundStateTimer -= dt;
       if (this.roundStateTimer <= 0) {
@@ -174,7 +206,7 @@ export class Game {
     }
 
     // Always update visual FX & camera
-    this.particles.update(dt);
+    this.particles.update(scaledDt);
     this.camera.update(dt, this.players.map(p => ({ x: p.x, y: p.y, isAlive: p.isAlive })));
 
     // End frame input clearances
@@ -202,6 +234,9 @@ export class Game {
   }
 
   private updateBattle(dt: number): void {
+    // 0. Update environmental weather and interactive props physics
+    this.envRenderer.update(dt, this.currentMap, this.players, this.projectiles, this.particles);
+
     // 1. Update platforms (crumble timer)
     for (const plat of this.currentMap.platforms) {
       if (plat.crumble && plat.crumbleState === 'shaking') {
@@ -220,7 +255,8 @@ export class Game {
         this.players,
         this.projectiles,
         this.currentMap.platforms,
-        this.currentMap.hazards
+        this.currentMap.hazards,
+        this.currentMap.boundaryType || 'solid'
       );
       this.input.setVirtualInput(slot as any, botInput);
     });
@@ -230,6 +266,9 @@ export class Game {
     const gravScale = this.currentMap.gravityScale ?? 1.0;
 
     for (const p of this.players) {
+      if (p.index === 0) {
+        this.input.setP1WorldPos(p.x, p.y - 4);
+      }
       const pInput = this.input.getInput(p.index as any);
       p.update(
         dt,
@@ -240,7 +279,7 @@ export class Game {
         this.particles,
         this.projectiles,
         this.players,
-        this.currentMap.hasScreenWrap ?? false,
+        this.currentMap.boundaryType || 'solid',
         gravScale
       );
     }
@@ -248,7 +287,12 @@ export class Game {
     // 4. Update Projectiles & Collisions
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const proj = this.projectiles[i];
-      proj.update(dt, this.players.map(p => ({ x: p.x, y: p.y, isAlive: p.isAlive, index: p.index })));
+      proj.update(
+        dt,
+        this.players.map(p => ({ x: p.x, y: p.y, isAlive: p.isAlive, index: p.index })),
+        gravScale,
+        this.currentMap.boundaryType || 'solid'
+      );
 
       // Emit flight particles
       if (!proj.isStuck && Math.random() < 0.4) {
@@ -271,6 +315,7 @@ export class Game {
             // Arrow clash!
             this.sound.playSwordClash();
             this.particles.emitSparks((proj.x + otherProj.x) * 0.5, (proj.y + otherProj.y) * 0.5, 14, '#ffd166');
+            this.particles.emitCombatText((proj.x + otherProj.x) * 0.5, (proj.y + otherProj.y) * 0.5 - 15, 'CLASH!', '#ffd166', 15);
             proj.vx *= -0.4;
             proj.vy = 200;
             otherProj.vx *= -0.4;
@@ -404,11 +449,19 @@ export class Game {
       this.state = 'round-end';
       this.roundStateTimer = 2.0;
 
+      // Trigger cinematic slow-motion on the round-deciding hit
+      this.triggerSlowMo(0.16, 0.45);
+
       if (alivePlayers.length === 1) {
         this.roundWinner = alivePlayers[0];
         this.roundWinner.wins++;
         this.sound.playRoundWinHorn();
         this.particles.emitConfetti(this.roundWinner.x, this.roundWinner.y, 60);
+
+        const isMatchPoint = this.roundWinner.wins >= this.targetWins;
+        const bannerText = isMatchPoint ? 'CHAMPION!' : 'LETHAL BLOW!';
+        const bannerColor = isMatchPoint ? '#ffd166' : '#ef476f';
+        this.particles.emitCombatText(this.roundWinner.x, this.roundWinner.y - 42, bannerText, bannerColor, 18);
 
         if (this.onRoundAnnounce) {
           this.onRoundAnnounce(`${this.roundWinner.name.toUpperCase()} WINS!`, `SCORE: ${this.roundWinner.wins} / ${this.targetWins}`);
@@ -532,8 +585,10 @@ export class Game {
     }
 
     // 5. Render Players
+    const activePlats = this.currentMap.platforms.filter(p => p.crumbleState !== 'vanished');
+    const grav = this.currentMap.gravityScale ?? 1.0;
     for (const p of this.players) {
-      p.render(ctx);
+      p.render(ctx, activePlats, grav, this.players, this.currentMap.boundaryType || 'solid');
     }
 
     // 6. Render Particles
@@ -553,20 +608,8 @@ export class Game {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 1280, 720);
 
-    // Ambient floating particles
-    ctx.save();
-    const time = performance.now() * 0.001;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-
-    for (let i = 0; i < 24; i++) {
-      const px = ((i * 57 + time * 20) % 1320) - 20;
-      const py = ((i * 37 + Math.sin(time + i) * 30 + 100) % 740);
-      const size = (i % 3) + 1.5;
-      ctx.beginPath();
-      ctx.arc(px, py, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
+    // Weather particle simulation layer (rain streaks, snow flurries, embers, leaves, etc.)
+    this.envRenderer.renderWeather(ctx);
   }
 
   private renderPlatformsAndHazards(ctx: CanvasRenderingContext2D): void {
@@ -614,41 +657,17 @@ export class Game {
       ctx.restore();
     }
 
-    // Render Platforms
+    // Render Platforms with procedural textured shaders
+    const time = performance.now() * 0.001;
     for (const plat of this.currentMap.platforms) {
       if (plat.crumbleState === 'vanished') continue;
-
-      ctx.save();
-      const shakeOffset = plat.crumbleState === 'shaking' ? (Math.random() - 0.5) * 4 : 0;
-      ctx.translate(shakeOffset, 0);
-
-      // Main body
-      ctx.fillStyle = plat.color || '#334155';
-      ctx.fillRect(plat.x, plat.y, plat.w, plat.h);
-
-      // Top glowing border / ledge
-      ctx.strokeStyle = plat.borderColor || '#94a3b8';
-      ctx.lineWidth = plat.oneWay ? 3 : 2;
-      ctx.strokeRect(plat.x, plat.y, plat.w, plat.h);
-
-      // Bouncy highlight
-      if (plat.bouncy) {
-        ctx.fillStyle = '#00b4d8';
-        ctx.shadowColor = '#00b4d8';
-        ctx.shadowBlur = 8;
-        ctx.fillRect(plat.x, plat.y, plat.w, 4);
-      }
-
-      // Speed boost arrows
-      if (plat.speedBoost) {
-        ctx.fillStyle = plat.speedBoost > 0 ? '#00f5d4' : '#f72585';
-        ctx.font = 'bold 12px Outfit';
-        ctx.textAlign = 'center';
-        const arrow = plat.speedBoost > 0 ? '>>>' : '<<<';
-        ctx.fillText(arrow, plat.x + plat.w * 0.5, plat.y + 8);
-      }
-
-      ctx.restore();
+      this.envRenderer.renderPlatform(ctx, plat, this.currentMap, time);
     }
+
+    // Render interactive environment props (torches, lanterns, crystals with dynamic lighting halos)
+    this.envRenderer.renderProps(ctx, time);
+
+    // Render arena boundary walls, portals, hazard fields, bouncy forcefields, updrafts
+    this.envRenderer.renderBoundaries(ctx, this.currentMap, performance.now());
   }
 }

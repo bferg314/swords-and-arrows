@@ -1,4 +1,4 @@
-import { Platform } from '../maps/MapTypes';
+import { Platform, MapBoundaryType } from '../maps/MapTypes';
 
 export type ProjectileType = 'arrow' | 'sword-beam' | 'shrapnel' | 'skyfall-arrow';
 
@@ -72,7 +72,12 @@ export class Projectile {
     this.angle = Math.atan2(this.vy, this.vx);
   }
 
-  public update(dt: number, targets?: { x: number; y: number; isAlive: boolean; index: number }[]): void {
+  public update(
+    dt: number,
+    targets?: { x: number; y: number; isAlive: boolean; index: number }[],
+    gravityMultiplier: number = 1.0,
+    boundaryType: MapBoundaryType = 'solid'
+  ): void {
     if (this.isStuck) {
       this.lifeTimer -= dt;
       if (this.lifeTimer <= 0) {
@@ -119,7 +124,7 @@ export class Projectile {
 
     // Gravity
     if (this.hasGravity) {
-      this.vy += 380 * dt;
+      this.vy += 380 * gravityMultiplier * dt;
     }
 
     // Move
@@ -129,8 +134,60 @@ export class Projectile {
     // Update orientation
     this.angle = Math.atan2(this.vy, this.vx);
 
-    // Arena boundary checks
-    if (this.x < -100 || this.x > 1380 || this.y > 800 || this.y < -300) {
+    // Arena boundary checks & physical interactions
+    if (boundaryType === 'solid') {
+      if (this.x <= 20 && this.vx < 0) {
+        if (this.bouncesLeft > 0) {
+          this.bouncesLeft--;
+          this.vx = -this.vx * 0.85;
+          this.x = 22;
+        } else {
+          this.isStuck = true;
+          this.x = 20;
+          this.vx = 0;
+          this.vy = 0;
+        }
+      } else if (this.x >= 1260 && this.vx > 0) {
+        if (this.bouncesLeft > 0) {
+          this.bouncesLeft--;
+          this.vx = -this.vx * 0.85;
+          this.x = 1258;
+        } else {
+          this.isStuck = true;
+          this.x = 1260;
+          this.vx = 0;
+          this.vy = 0;
+        }
+      }
+    } else if (boundaryType === 'hazard') {
+      // Magma / electric boundaries incinerate arrows on contact
+      if (this.x <= 20 || this.x >= 1260) {
+        this.isDead = true;
+      }
+    } else if (boundaryType === 'bouncy') {
+      // Super kinetic ricochet!
+      if (this.x <= 20 && this.vx < 0) {
+        this.vx = -this.vx;
+        this.x = 22;
+      } else if (this.x >= 1260 && this.vx > 0) {
+        this.vx = -this.vx;
+        this.x = 1258;
+      }
+    } else if (boundaryType === 'portal') {
+      // Seamless screen-wrap
+      if (this.x < 0) {
+        this.x += 1280;
+      } else if (this.x > 1280) {
+        this.x -= 1280;
+      }
+    } else if (boundaryType === 'updraft') {
+      if (this.x < 75 || this.x > 1205) {
+        this.vy -= 400 * dt;
+      }
+    }
+
+    // Outer dead-zone cull
+    if (this.x < -200 || this.x > 1480 || this.y > 800 || this.y < -400) {
       this.isDead = true;
     }
   }

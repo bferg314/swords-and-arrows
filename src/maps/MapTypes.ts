@@ -1,3 +1,28 @@
+export type PlatformMaterial =
+  | 'stone'
+  | 'wood'
+  | 'basalt'
+  | 'cloud'
+  | 'crystal'
+  | 'tech'
+  | 'ice'
+  | 'ancient'
+  | 'celestial';
+
+export interface InteractiveProp {
+  id: string;
+  type: 'torch' | 'lantern' | 'crystal';
+  x: number;
+  y: number;
+  anchorX: number;
+  anchorY: number;
+  length?: number;
+  angle?: number;
+  angularVelocity?: number;
+  lightColor?: string;
+  lightRadius?: number;
+}
+
 export interface Platform {
   x: number;
   y: number;
@@ -16,6 +41,7 @@ export interface Platform {
   water?: boolean; // Water physics area
   color?: string;
   borderColor?: string;
+  material?: PlatformMaterial;
 }
 
 export interface HazardZone {
@@ -34,6 +60,22 @@ export interface MapSpawnPoint {
   y: number;
 }
 
+export type MapBoundaryType = 'solid' | 'open' | 'portal' | 'hazard' | 'bouncy' | 'updraft';
+
+export type BoundaryVisualTheme =
+  | 'stone'
+  | 'wood'
+  | 'metal'
+  | 'sandstone'
+  | 'portal-cosmic'
+  | 'portal-toxic'
+  | 'portal-crystal'
+  | 'hazard-magma'
+  | 'hazard-electric'
+  | 'bouncy-neon'
+  | 'bouncy-hydro'
+  | 'updraft-wind';
+
 export interface ArenaMap {
   id: string;
   name: string;
@@ -48,4 +90,7 @@ export interface ArenaMap {
   ambientType: 'dust' | 'embers' | 'clouds' | 'water' | 'sparks' | 'snow' | 'ghosts' | 'crystals';
   gravityScale?: number;
   hasScreenWrap?: boolean;
+  boundaryType?: MapBoundaryType;
+  boundaryTheme?: BoundaryVisualTheme;
+  props?: InteractiveProp[];
 }

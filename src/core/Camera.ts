@@ -96,4 +96,13 @@ export class Camera {
     this.shakeOffsetX = 0;
     this.shakeOffsetY = 0;
   }
+
+  public screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
+    const normX = (screenX - this.viewportWidth * 0.5) / this.zoom;
+    const normY = (screenY - this.viewportHeight * 0.5) / this.zoom;
+    return {
+      x: normX + this.x - this.shakeOffsetX,
+      y: normY + this.y - this.shakeOffsetY
+    };
+  }
 }

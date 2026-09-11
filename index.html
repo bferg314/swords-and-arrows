@@ -208,10 +208,10 @@
               <div class="slot-row">
                 <label>TYPE</label>
                 <select id="p1-type" class="slot-select">
-                  <option value="human">Human (Keyboard 1 / GP 1)</option>
                   <option value="cpu-easy">CPU (Novice)</option>
                   <option value="cpu-med">CPU (Skilled)</option>
                   <option value="cpu-hard">CPU (Deadly)</option>
+                  <option value="human" selected>Human (WASD / Gamepad)</option>
                 </select>
               </div>
               <div class="slot-row">
@@ -239,10 +239,10 @@
               <div class="slot-row">
                 <label>TYPE</label>
                 <select id="p2-type" class="slot-select">
-                  <option value="cpu-med" selected>CPU (Skilled)</option>
-                  <option value="human">Human (Arrows / GP 2)</option>
                   <option value="cpu-easy">CPU (Novice)</option>
+                  <option value="cpu-med" selected>CPU (Skilled)</option>
                   <option value="cpu-hard">CPU (Deadly)</option>
+                  <option value="human">Human (Arrows / Gamepad)</option>
                 </select>
               </div>
               <div class="slot-row">
@@ -263,7 +263,10 @@
           <div class="lobby-slot p3-theme" id="slot-p3">
             <div class="slot-header">
               <span class="slot-tag">PLAYER 3</span>
-              <button class="btn-toggle-slot" id="toggle-p3">+ ADD</button>
+              <div class="slot-header-actions">
+                <span class="slot-status hidden">OFF</span>
+                <button class="btn-toggle-slot" id="toggle-p3">+ ADD</button>
+              </div>
             </div>
             <div class="slot-content-body hidden" id="slot-body-p3">
               <div class="slot-sprite-preview" id="sprite-preview-3"></div>
@@ -271,10 +274,10 @@
                 <div class="slot-row">
                   <label>TYPE</label>
                   <select id="p3-type" class="slot-select">
+                    <option value="cpu-easy" selected>CPU (Novice)</option>
                     <option value="cpu-med">CPU (Skilled)</option>
-                    <option value="human">Human (IJKL / GP 3)</option>
-                    <option value="cpu-easy">CPU (Novice)</option>
                     <option value="cpu-hard">CPU (Deadly)</option>
+                    <option value="human">Human (IJKL / Gamepad)</option>
                   </select>
                 </div>
                 <div class="slot-row">
@@ -300,7 +303,10 @@
           <div class="lobby-slot p4-theme" id="slot-p4">
             <div class="slot-header">
               <span class="slot-tag">PLAYER 4</span>
-              <button class="btn-toggle-slot" id="toggle-p4">+ ADD</button>
+              <div class="slot-header-actions">
+                <span class="slot-status hidden">OFF</span>
+                <button class="btn-toggle-slot" id="toggle-p4">+ ADD</button>
+              </div>
             </div>
             <div class="slot-content-body hidden" id="slot-body-p4">
               <div class="slot-sprite-preview" id="sprite-preview-4"></div>
@@ -308,10 +314,10 @@
                 <div class="slot-row">
                   <label>TYPE</label>
                   <select id="p4-type" class="slot-select">
+                    <option value="cpu-easy" selected>CPU (Novice)</option>
                     <option value="cpu-med">CPU (Skilled)</option>
-                    <option value="human">Human (Numpad / GP 4)</option>
-                    <option value="cpu-easy">CPU (Novice)</option>
                     <option value="cpu-hard">CPU (Deadly)</option>
+                    <option value="human">Human (Numpad / Gamepad)</option>
                   </select>
                 </div>
                 <div class="slot-row">
