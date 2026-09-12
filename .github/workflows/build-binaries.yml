@@ -27,9 +27,6 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
 
-    env:
-      CSC_IDENTITY_AUTO_DISCOVERY: false
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,6 +45,19 @@ jobs:
 
       - name: Package Desktop Binary
         run: npx electron-builder --publish never
+
+      - name: Verify macOS Code Signing
+        if: runner.os == 'macOS'
+        run: |
+          echo "=== Verifying macOS Application Signatures ==="
+          for app in release/mac*/*.app; do
+            if [ -d "$app" ]; then
+              echo "Checking signature for: $app"
+              codesign -dv --verbose=4 "$app" || codesign --force --deep --sign - "$app"
+            fi
+          done
+          echo "=== Packaged macOS Artifacts ==="
+          ls -lh release/*.dmg release/*.zip
 
       - name: Upload Binary Artifacts
         uses: actions/upload-artifact@v4

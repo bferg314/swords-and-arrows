@@ -1,7 +1,7 @@
 {
   "name": "swords-and-arrows",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "2-4 player couch multiplayer platform fighter with swords, arrows, and underdog comeback drafting",
   "author": "Swords & Arrows Team <ninjabreath@gmail.com>",
   "main": "electron/main.cjs",
@@ -52,6 +52,11 @@
     },
     "mac": {
       "category": "public.app-category.games",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "target": [
         {
           "target": "dmg",
