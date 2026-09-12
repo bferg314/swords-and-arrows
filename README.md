@@ -51,6 +51,16 @@
   - Runs natively in any modern web browser.
   - Pre-built binary packages for Windows (`.exe` installer & portable), macOS (`.dmg` & `.zip`), and Linux (`.AppImage` & `.deb`) are automatically built via GitHub Actions and published to [GitHub Releases](https://github.com/bferg314/swords-and-arrows/releases).
 
+> **🍎 macOS Installation Note (Gatekeeper Quarantine)**:  
+> Because Swords & Arrows is an independent open-source project without a paid Apple Developer certificate, macOS Gatekeeper quarantines internet downloads and may show *“Swords and Arrows is damaged and can't be opened.”*  
+> **To launch on Mac (Apple Silicon or Intel)**:
+> 1. Drag **`Swords and Arrows.app`** into your `/Applications` folder.
+> 2. Open **Terminal** and run:
+>    ```bash
+>    xattr -cr /Applications/"Swords and Arrows.app"
+>    ```
+>    *(Or right-click the app in Finder ➔ select **Open** ➔ click **Open**, or go to **System Settings ➔ Privacy & Security** and click **Open Anyway**).*
+
 ---
 
 ## 🎮 Controls Guide
