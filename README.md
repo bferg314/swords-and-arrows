@@ -2,12 +2,15 @@
 ### 2–4 Player Couch Multiplayer Platform Battle
 
 ![Swords & Arrows Banner](https://img.shields.io/badge/Platform-Desktop%20%7C%20Web-gold?style=for-the-badge)
+[![Play Online](https://img.shields.io/badge/Play%20Online-swords--and--arrows.tinyibex.com-orange?style=for-the-badge&logo=cloudflare)](https://swords-and-arrows.tinyibex.com)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue?style=for-the-badge&logo=typescript)
 ![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?style=for-the-badge&logo=vite)
 ![Electron](https://img.shields.io/badge/Electron-44.3-47848F?style=for-the-badge&logo=electron)
 ![Gamepad API](https://img.shields.io/badge/Input-Gamepad%20%2B%20Keyboard-green?style=for-the-badge)
 
 **Swords & Arrows** is a fast-paced, high-stakes 2–4 player couch multiplayer platform battle game built with pure TypeScript, HTML5 Canvas 2D, and Electron. Inspired by classic arena combat games like *TowerFall*, *Smash Bros*, and *Duck Game*, it blends precision platforming, instant weapon toggling, skill-based arrow deflection, and an underdog comeback drafting system.
+
+👉 **Play immediately in your browser at [swords-and-arrows.tinyibex.com](https://swords-and-arrows.tinyibex.com)**!
 
 <p align="center">
   <img src="docs/screenshots/gameplay_battle.png" alt="Swords & Arrows 4-Player Combat" width="100%" />
@@ -141,13 +144,16 @@ npm run dev
 ```
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-### Building for Web
+### Building & Deploying for Web
 ```bash
 # Build optimized web assets
 npm run build
 
 # Preview production build locally
 npm run preview
+
+# Deploy to Cloudflare Workers (swords-and-arrows.tinyibex.com)
+npm run deploy:worker
 ```
 
 ### Desktop App (Electron)
@@ -174,7 +180,8 @@ npm run dist:linux
 - **Graphics & Engine**: HTML5 Canvas 2D with fixed-timestep physics loop (deterministic 60 FPS)
 - **Audio**: Web Audio API Procedural Synthesizer (zero external audio file dependencies)
 - **Desktop Framework**: Electron 44 with electron-builder
-- **CI/CD**: GitHub Actions matrix builds for Windows, macOS, and Linux binaries
+- **Web Hosting**: Cloudflare Workers with Static Assets & Custom Domain
+- **CI/CD**: GitHub Actions (Desktop binaries for Windows, macOS, Linux + automated Cloudflare Workers web deployment)
 
 ---
 
