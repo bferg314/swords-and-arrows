@@ -1565,3 +1565,18 @@ body.non-mouse-active #map-select-screen .btn:not(.gamepad-focused) {
   color: #ffd166;
 }
 
+.hud-modifier-badge {
+  display: inline-block;
+  background: rgba(255, 209, 102, 0.18);
+  color: #ffd166;
+  border: 1px solid rgba(255, 209, 102, 0.45);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  margin-left: 8px;
+  text-transform: uppercase;
+  box-shadow: 0 0 10px rgba(255, 209, 102, 0.25);
+}
+

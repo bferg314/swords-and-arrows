@@ -51,6 +51,11 @@ export class Player {
   public isInvulnerable: boolean = false;
   private invulnerableTimer: number = 0;
 
+  public grantInvulnerability(duration: number): void {
+    this.isInvulnerable = true;
+    this.invulnerableTimer = Math.max(this.invulnerableTimer, duration);
+  }
+
   // Health & Round state
   public maxHealth: number = 3;
   public health: number = 3;
@@ -87,6 +92,9 @@ export class Player {
   // Status Effects
   public freezeTimer: number = 0;
   public speedSurgeTimer: number = 0;
+  public hitstunTimer: number = 0;
+  public speedMultiplier: number = 1.0;
+  public lockWeapon: WeaponType | null = null;
 
   // Power-Ups Inventory
   public powerUps: PlayerPowerUpInventory = {};
@@ -139,6 +147,13 @@ export class Player {
     this.quiverAmmo = this.hasPowerUp('infinite-quiver') ? 999 : 3;
     this.freezeTimer = 0;
     this.speedSurgeTimer = 0;
+    this.hitstunTimer = 0;
+    if (this.lockWeapon) {
+      this.currentWeapon = this.lockWeapon;
+    }
+    if (this.lockWeapon === 'bow') {
+      this.quiverAmmo = 999;
+    }
     this.jumpsRemaining = 2;
     this.dropThroughTimer = 0;
     this.jumpBufferTimer = 0;
@@ -174,7 +189,7 @@ export class Player {
 
   public getArrowSpeed(isCharged: boolean, drawProgress: number = 1.0): number {
     if (this.hasPowerUp('railgun-piercer') && isCharged) {
-      return 1400;
+      return 1250;
     }
     const chargeFactor = Math.min(1.0, Math.max(0, (drawProgress - 0.1) / 0.75));
     const minSpeed = 620;
@@ -204,6 +219,25 @@ export class Player {
       this.vx *= 0.8;
       // Emit occasional ice flakes
       if (Math.random() < 0.2) particles.emitIceCrystals(this.x, this.y);
+      return;
+    }
+
+    // Handle Hitstun status effect (control lockout)
+    if (this.hitstunTimer > 0) {
+      this.hitstunTimer -= dt;
+      this.isAttacking = false;
+      this.isDrawingBow = false;
+      this.bowDrawCharge = 0;
+      this.isDownThrusting = false;
+      this.isParrying = false;
+      const gravity = 1050 * gravityMultiplier;
+      this.vy += gravity * dt;
+      if (this.vy > 750) this.vy = 750;
+      this.vx *= Math.pow(0.5, dt * 6);
+      this.updateCollisions(dt, platforms, hazards, sound, particles, boundaryType);
+      if (this.y > 750) {
+        this.dieFromAbyss(sound, particles);
+      }
       return;
     }
 
@@ -277,17 +311,20 @@ export class Player {
       cur.y += (targetY - cur.y) * Math.min(1.0, 22 * dt);
     }
 
-    // Passive quiver ammo regeneration (1 arrow every 4 seconds if not infinite)
+    // Passive quiver ammo regeneration (1 arrow every 4s, or 1.5s in Snipers Only)
+    const regenInterval = this.lockWeapon === 'bow' ? 1.5 : 4.0;
     if (!this.hasPowerUp('infinite-quiver') && this.quiverAmmo < this.maxQuiverAmmo) {
       this.ammoRegenTimer += dt;
-      if (this.ammoRegenTimer >= 4.0) {
+      if (this.ammoRegenTimer >= regenInterval) {
         this.quiverAmmo++;
         this.ammoRegenTimer = 0;
       }
     }
 
     // ================= 1. WEAPON SWITCHING =================
-    if (input.switchWeaponJustPressed && this.weaponSwitchCooldown <= 0) {
+    if (this.lockWeapon) {
+      this.currentWeapon = this.lockWeapon;
+    } else if (input.switchWeaponJustPressed && this.weaponSwitchCooldown <= 0) {
       this.currentWeapon = this.currentWeapon === 'sword' ? 'bow' : 'sword';
       this.weaponSwitchCooldown = 0.15;
       sound.playWeaponSwitch();
@@ -302,14 +339,14 @@ export class Player {
     // ================= 2. DASH MECHANIC =================
     if (input.dashJustPressed && this.dashCooldown <= 0 && !this.isDashing) {
       this.isDashing = true;
-      const dashDuration = this.hasPowerUp('vorpal-dash') ? 0.28 : 0.18;
+      const dashDuration = this.hasPowerUp('vorpal-dash') ? 0.24 : 0.18;
       this.dashTimer = dashDuration;
-      this.dashCooldown = this.hasPowerUp('vorpal-dash') ? 0.45 : 0.6;
+      this.dashCooldown = this.hasPowerUp('vorpal-dash') ? 0.52 : 0.6;
       this.isInvulnerable = true;
-      this.invulnerableTimer = dashDuration + 0.05;
+      this.invulnerableTimer = dashDuration + 0.04;
 
       const dashDir = input.left ? -1 : (input.right ? 1 : (this.facingLeft ? -1 : 1));
-      const dashSpeed = this.hasPowerUp('vorpal-dash') ? 720 : 540;
+      const dashSpeed = this.hasPowerUp('vorpal-dash') ? 640 : 540;
       this.vx = dashDir * dashSpeed;
       this.vy = 0;
 
@@ -358,7 +395,7 @@ export class Player {
         this.facingLeft = moveDir < 0;
       }
 
-      const baseSpeed = 310;
+      const baseSpeed = 310 * this.speedMultiplier;
       const speedMod = (this.speedSurgeTimer > 0 ? 1.4 : 1.0);
       const targetSpeed = moveDir * baseSpeed * speedMod;
 
@@ -440,7 +477,7 @@ export class Player {
 
     // Fall into abyss
     if (this.y > 750) {
-      this.takeDamage(999, 0, 0, sound, particles);
+      this.dieFromAbyss(sound, particles);
     }
 
     // Arrow collection from platforms
@@ -842,15 +879,26 @@ export class Player {
     }));
   }
 
+  public dieFromAbyss(sound: SoundEngine, particles: ParticleSystem): void {
+    if (!this.isAlive) return;
+    this.health = 0;
+    this.isAlive = false;
+    this.stats.deaths++;
+    sound.playExplosion();
+    particles.emitExplosion(this.x, Math.min(this.y, 720), 40);
+  }
+
   public takeDamage(
     amount: number,
     knockbackX: number,
     knockbackY: number,
     sound: SoundEngine,
     particles: ParticleSystem,
-    attacker?: Player
+    attacker?: Player,
+    ignoreInvulnerable: boolean = false
   ): void {
-    if (!this.isAlive || this.isInvulnerable) return;
+    if (!this.isAlive) return;
+    if (this.isInvulnerable && !ignoreInvulnerable) return;
 
     this.health = Math.max(0, this.health - amount);
     this.vx = knockbackX;
@@ -858,6 +906,12 @@ export class Player {
     this.isInvulnerable = true;
     this.invulnerableTimer = 0.45;
     this.hitFlashTimer = 0.24;
+    this.hitstunTimer = 0.15; // Set hitstun control lockout
+    this.isAttacking = false;
+    this.isDrawingBow = false;
+    this.bowDrawCharge = 0;
+    this.isDownThrusting = false;
+    this.isParrying = false;
 
     sound.playHitImpact();
     particles.emitSparks(this.x, this.y, 14, '#ff4d6d');
@@ -1286,7 +1340,11 @@ export class Player {
     let eyeH = 3;
     let eyeY = -20 - bobY;
 
-    if (this.hitFlashTimer > 0) {
+    if (this.hitstunTimer > 0) {
+      eyeColor = '#ff4d6d';
+      eyeH = 1;
+      eyeY = -18 - bobY;
+    } else if (this.hitFlashTimer > 0) {
       eyeColor = '#ff0054';
     } else if (this.parrySparkleTimer > 0 || this.isParrying) {
       eyeColor = '#ffffff';

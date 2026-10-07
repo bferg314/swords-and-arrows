@@ -736,7 +736,7 @@ export class GamepadNavigator {
           this.lobbySubIndex = this.getTopSubIndexForSlot(this.lobbySlotIndex);
           this.applyFocus();
         } else if (dx !== 0) {
-          this.lobbyRulesIndex = this.lobbyRulesIndex === 0 ? 1 : 0;
+          this.lobbyRulesIndex = (this.lobbyRulesIndex + dx + 3) % 3;
           this.applyFocus();
         }
       } else if (this.lobbyOnBottomBar) {
@@ -778,7 +778,7 @@ export class GamepadNavigator {
           if (!active) {
             // Inactive slot only has toggle (0) -> go to rules bar
             this.lobbyOnRulesBar = true;
-            this.lobbyRulesIndex = this.lobbySlotIndex < 2 ? 0 : 1;
+            this.lobbyRulesIndex = this.lobbySlotIndex === 0 ? 0 : (this.lobbySlotIndex === 1 ? 1 : 2);
             this.applyFocus();
           } else {
             // Active slot: Row 2 (Color) -> Row 1 (Type) -> Row 0 (Toggle if present) -> Rules Bar
@@ -791,13 +791,13 @@ export class GamepadNavigator {
                 this.applyFocus();
               } else {
                 this.lobbyOnRulesBar = true;
-                this.lobbyRulesIndex = this.lobbySlotIndex < 2 ? 0 : 1;
+                this.lobbyRulesIndex = this.lobbySlotIndex === 0 ? 0 : (this.lobbySlotIndex === 1 ? 1 : 2);
                 this.applyFocus();
               }
             } else {
               // From Row 0 (Toggle) up to Rules Bar
               this.lobbyOnRulesBar = true;
-              this.lobbyRulesIndex = this.lobbySlotIndex < 2 ? 0 : 1;
+              this.lobbyRulesIndex = this.lobbySlotIndex === 0 ? 0 : (this.lobbySlotIndex === 1 ? 1 : 2);
               this.applyFocus();
             }
           }
@@ -877,7 +877,9 @@ export class GamepadNavigator {
       pauseBtns[this.pauseButtonIndex]?.click();
     } else if (this.currentScreen === 'lobby') {
       if (this.lobbyOnRulesBar) {
-        const selectId = this.lobbyRulesIndex === 0 ? 'lobby-target-wins' : 'lobby-round-hp';
+        let selectId = 'lobby-target-wins';
+        if (this.lobbyRulesIndex === 1) selectId = 'lobby-round-hp';
+        else if (this.lobbyRulesIndex === 2) selectId = 'lobby-modifier';
         const select = document.getElementById(selectId) as HTMLSelectElement;
         if (select) {
           select.selectedIndex = (select.selectedIndex + 1) % select.options.length;
@@ -1093,9 +1095,13 @@ export class GamepadNavigator {
     } else if (this.currentScreen === 'lobby') {
       this.updatePromptBar();
       if (this.lobbyOnRulesBar) {
-        target = this.lobbyRulesIndex === 0
-          ? document.getElementById('lobby-target-wins')
-          : document.getElementById('lobby-round-hp');
+        if (this.lobbyRulesIndex === 0) {
+          target = document.getElementById('lobby-target-wins');
+        } else if (this.lobbyRulesIndex === 1) {
+          target = document.getElementById('lobby-round-hp');
+        } else {
+          target = document.getElementById('lobby-modifier');
+        }
       } else if (this.lobbyOnBottomBar) {
         target = this.lobbyBottomIndex === 0
           ? document.getElementById('btn-lobby-back')
@@ -1180,6 +1186,11 @@ export class GamepadNavigator {
     } else if (target.id === 'lobby-round-hp') {
       this.lobbyOnRulesBar = true;
       this.lobbyRulesIndex = 1;
+      this.lobbyOnBottomBar = false;
+      this.updatePromptBar();
+    } else if (target.id === 'lobby-modifier') {
+      this.lobbyOnRulesBar = true;
+      this.lobbyRulesIndex = 2;
       this.lobbyOnBottomBar = false;
       this.updatePromptBar();
     } else if (target.id === 'btn-lobby-back') {

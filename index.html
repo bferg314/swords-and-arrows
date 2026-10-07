@@ -85,6 +85,7 @@
           <div class="hud-map-indicator">
             <span class="map-label">ARENA:</span>
             <span id="hud-map-name" class="map-val">The Royal Courtyard</span>
+            <span id="hud-modifier-badge" class="hud-modifier-badge hidden">⚡ TURBO</span>
           </div>
           <div class="hud-controls-hint">
             <span>[R / Y] Switch Weapon</span> • 
@@ -191,6 +192,18 @@
                 <option value="3" selected>3 Hearts (Standard)</option>
                 <option value="4">4 Hearts (Sturdy)</option>
                 <option value="5">5 Hearts (Juggernaut)</option>
+              </select>
+            </div>
+            <div class="lobby-rule-divider">•</div>
+            <div class="lobby-rule-item">
+              <label for="lobby-modifier">MODIFIER:</label>
+              <select id="lobby-modifier" class="rule-select">
+                <option value="none" selected>Standard Match</option>
+                <option value="snipers">🏹 Snipers Only (Bows Only)</option>
+                <option value="blades">⚔️ Blades Only (Swords Only)</option>
+                <option value="chaos-draft">🃏 Chaos Draft (All Warriors Upgrade)</option>
+                <option value="moon-gravity">🌙 Low Gravity (Floaty Arena)</option>
+                <option value="turbo">⚡ Turbo Speed (Fast & Lethal)</option>
               </select>
             </div>
           </div>

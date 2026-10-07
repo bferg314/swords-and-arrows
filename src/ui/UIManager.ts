@@ -1,4 +1,4 @@
-import { Game, GamePlayerConfig } from '../core/Game';
+import { Game, GamePlayerConfig, MatchModifier } from '../core/Game';
 import { ARENA_MAPS } from '../maps/MapRegistry';
 import { SWORD_POWERUPS, BOW_POWERUPS } from '../powerups/PowerUpRegistry';
 import { PowerUpDefinition } from '../powerups/PowerUpTypes';
@@ -30,6 +30,7 @@ export class UIManager {
   private selectedMapId: string = 'random';
   private targetWins: number = 3;
   private roundHp: number = 3;
+  private matchModifier: MatchModifier = 'none';
 
   constructor(game: Game) {
     this.game = game;
@@ -55,6 +56,11 @@ export class UIManager {
     const roundHpSelect = document.getElementById('lobby-round-hp') as HTMLSelectElement;
     roundHpSelect?.addEventListener('change', (e) => {
       this.roundHp = parseInt((e.target as HTMLSelectElement).value, 10) || 3;
+    });
+
+    const modifierSelect = document.getElementById('lobby-modifier') as HTMLSelectElement;
+    modifierSelect?.addEventListener('change', (e) => {
+      this.matchModifier = (e.target as HTMLSelectElement).value as MatchModifier;
     });
 
     // Desktop App Support (Electron)
@@ -151,7 +157,7 @@ export class UIManager {
     // Podium buttons
     document.getElementById('btn-rematch')?.addEventListener('click', () => {
       this.showScreen('game');
-      this.game.initMatch(this.playerConfigs, this.selectedMapId, this.targetWins, this.roundHp);
+      this.game.initMatch(this.playerConfigs, this.selectedMapId, this.targetWins, this.roundHp, this.matchModifier);
     });
 
     document.getElementById('btn-change-map')?.addEventListener('click', () => {
@@ -501,7 +507,7 @@ export class UIManager {
 
   private startGameMatch(): void {
     this.showScreen('game');
-    this.game.initMatch(this.playerConfigs, this.selectedMapId, this.targetWins, this.roundHp);
+    this.game.initMatch(this.playerConfigs, this.selectedMapId, this.targetWins, this.roundHp, this.matchModifier);
   }
 
   private bindGameCallbacks(): void {
@@ -660,9 +666,27 @@ export class UIManager {
   }
 
   private updateHud(game: Game): void {
-    // Arena name
+    // Arena name & modifier badge
     const mapNameElem = document.getElementById('hud-map-name');
     if (mapNameElem) mapNameElem.textContent = game.currentMap.name;
+
+    const modifierBadge = document.getElementById('hud-modifier-badge');
+    if (modifierBadge) {
+      if (game.matchModifier && game.matchModifier !== 'none') {
+        modifierBadge.classList.remove('hidden');
+        const labels: Record<MatchModifier, string> = {
+          'none': '',
+          'snipers': '🏹 SNIPERS ONLY',
+          'blades': '⚔️ BLADES ONLY',
+          'chaos-draft': '🃏 CHAOS DRAFT',
+          'moon-gravity': '🌙 LOW GRAVITY',
+          'turbo': '⚡ TURBO SPEED'
+        };
+        modifierBadge.textContent = labels[game.matchModifier] || '';
+      } else {
+        modifierBadge.classList.add('hidden');
+      }
+    }
 
     // Player Cards P1 to P4
     const slots = ['p1', 'p2', 'p3', 'p4'];

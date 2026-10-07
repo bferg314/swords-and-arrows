@@ -12,6 +12,7 @@ import { PowerUpDefinition } from '../powerups/PowerUpTypes';
 import { drawRandomPowerUps } from '../powerups/PowerUpRegistry';
 
 export type GameState = 'lobby' | 'playing' | 'round-end' | 'draft' | 'podium';
+export type MatchModifier = 'none' | 'snipers' | 'blades' | 'chaos-draft' | 'moon-gravity' | 'turbo';
 
 export interface GamePlayerConfig {
   slot: number;
@@ -41,6 +42,7 @@ export class Game {
   public roundHp: number = 3;
   public roundNumber: number = 1;
   public selectedMapId: string = 'random';
+  public matchModifier: MatchModifier = 'none';
 
   // Round flow state
   private roundStateTimer: number = 0;
@@ -82,11 +84,18 @@ export class Game {
     this.envRenderer.initMap(this.currentMap);
   }
 
-  public initMatch(playerConfigs: GamePlayerConfig[], mapId: string = 'random', targetWins: number = 3, roundHp: number = 3): void {
+  public initMatch(
+    playerConfigs: GamePlayerConfig[],
+    mapId: string = 'random',
+    targetWins: number = 3,
+    roundHp: number = 3,
+    matchModifier: MatchModifier = 'none'
+  ): void {
     this.sound.init();
     this.selectedMapId = mapId;
     this.targetWins = targetWins;
     this.roundHp = roundHp;
+    this.matchModifier = matchModifier;
     this.roundNumber = 1;
     this.matchWinner = null;
     this.roundWinner = null;
@@ -158,15 +167,28 @@ export class Game {
       }
     }
 
-    // Spawn players
+    // Spawn players with modifiers
     const spawns = this.currentMap.spawnPoints;
     this.players.forEach((p, index) => {
       const sp = spawns[index % spawns.length];
+      p.speedMultiplier = this.matchModifier === 'turbo' ? 1.35 : 1.0;
+      p.lockWeapon = this.matchModifier === 'snipers' ? 'bow' : (this.matchModifier === 'blades' ? 'sword' : null);
       p.resetForRound(sp.x, sp.y, this.roundHp);
     });
 
+    if (this.matchModifier === 'moon-gravity') {
+      this.currentMap.gravityScale = (this.currentMap.gravityScale ?? 1.0) * 0.65;
+    }
+
+    let subText = `FIRST TO ${this.targetWins} WINS`;
+    if (this.matchModifier === 'snipers') subText = `🏹 SNIPERS ONLY • TO ${this.targetWins}`;
+    else if (this.matchModifier === 'blades') subText = `⚔️ BLADES ONLY • TO ${this.targetWins}`;
+    else if (this.matchModifier === 'chaos-draft') subText = `🃏 CHAOS DRAFT • TO ${this.targetWins}`;
+    else if (this.matchModifier === 'moon-gravity') subText = `🌙 LOW GRAVITY • TO ${this.targetWins}`;
+    else if (this.matchModifier === 'turbo') subText = `⚡ TURBO SPEED • TO ${this.targetWins}`;
+
     if (this.onRoundAnnounce) {
-      this.onRoundAnnounce(`ROUND ${this.roundNumber}`, `FIRST TO ${this.targetWins} WINS`);
+      this.onRoundAnnounce(`ROUND ${this.roundNumber}`, subText);
     }
 
     if (this.onHudUpdate) {
@@ -226,6 +248,7 @@ export class Game {
   }
 
   public togglePause(): void {
+    if (this.state !== 'playing' && !this.isPaused) return;
     if (this.isPaused) {
       this.resume();
     } else {
@@ -420,13 +443,15 @@ export class Game {
                 this.particles.emitIceCrystals(p.x, p.y);
               }
 
-              // Grapple pull archer to hit player
+              // Grapple pull archer to hit player with arrival protection
               if (proj.isGrapple && ownerPlayer && ownerPlayer.isAlive) {
                 ownerPlayer.x = p.x - Math.sign(proj.vx) * 35;
                 ownerPlayer.y = p.y;
                 ownerPlayer.vx = 0;
                 ownerPlayer.vy = -180;
-                this.particles.emitSparks(ownerPlayer.x, ownerPlayer.y, 10, '#52b788');
+                ownerPlayer.grantInvulnerability(0.35);
+                this.particles.emitSparks(ownerPlayer.x, ownerPlayer.y, 14, '#52b788');
+                this.particles.emitCombatText(ownerPlayer.x, ownerPlayer.y - 20, 'TETHER!', '#52b788', 14);
               }
 
               // Explosive Payload detonation
@@ -504,11 +529,16 @@ export class Game {
       return;
     }
 
-    // Match continues! Set up Underdog Draft for round loser(s)
+    // Match continues! Set up Underdog or Chaos Draft
     this.roundNumber++;
 
-    // Loser(s) are all players who did NOT win this round
-    this.draftQueue = this.players.filter(p => p !== this.roundWinner);
+    if (this.matchModifier === 'chaos-draft') {
+      // In Chaos Draft, EVERY player gets to draft an upgrade, lowest score first!
+      this.draftQueue = [...this.players].sort((a, b) => a.wins - b.wins);
+    } else {
+      // Loser(s) are all players who did NOT win this round
+      this.draftQueue = this.players.filter(p => p !== this.roundWinner);
+    }
 
     if (this.draftQueue.length > 0) {
       this.state = 'draft';
@@ -543,7 +573,9 @@ export class Game {
       }
 
       setTimeout(() => {
-        this.selectDraftPowerUp(chosen);
+        if (this.state === 'draft') {
+          this.selectDraftPowerUp(chosen);
+        }
       }, 1400);
     } else {
       // Human selects via UI
