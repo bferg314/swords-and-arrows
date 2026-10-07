@@ -455,14 +455,21 @@ export class BotController {
     }
 
     // ================= 3. WEAPON SWITCHING =================
-    const switchCooldown = difficulty === 'hard' ? 0.2 : (difficulty === 'med' ? 0.8 : 2.2);
-    if (this.weaponSwitchTimer <= 0) {
-      if (minDistance < 100 && this.player.currentWeapon !== 'sword') {
+    if (this.player.lockWeapon) {
+      // Weapon locked by match modifier (Snipers Only / Blades Only)
+      if (this.player.currentWeapon !== this.player.lockWeapon) {
         state.switchWeaponJustPressed = true;
-        this.weaponSwitchTimer = switchCooldown;
-      } else if (minDistance > 220 && this.player.currentWeapon !== 'bow') {
-        state.switchWeaponJustPressed = true;
-        this.weaponSwitchTimer = switchCooldown;
+      }
+    } else {
+      const switchCooldown = difficulty === 'hard' ? 0.2 : (difficulty === 'med' ? 0.8 : 2.2);
+      if (this.weaponSwitchTimer <= 0) {
+        if (minDistance < 100 && this.player.currentWeapon !== 'sword') {
+          state.switchWeaponJustPressed = true;
+          this.weaponSwitchTimer = switchCooldown;
+        } else if (minDistance > 220 && this.player.currentWeapon !== 'bow') {
+          state.switchWeaponJustPressed = true;
+          this.weaponSwitchTimer = switchCooldown;
+        }
       }
     }
 
@@ -527,10 +534,13 @@ export class BotController {
         this.triggerJump(0.30, needsDouble, moveDir);
         state.jump = true;
         state.jumpJustPressed = true;
-      } else if (dy > 80 && this.player.isGrounded && Math.random() < (difficulty === 'easy' ? 0.02 : 0.04)) {
-        // Opponent is below: ONLY drop through if there is safe ground beneath!
-        if (currentPlat && currentPlat.oneWay) {
-          const isHazardBelow = this.isLethalFall(this.player.x, currentPlat.y + currentPlat.h + 15, platforms, hazards);
+      } else if (dy > 65 && this.player.isGrounded) {
+        // Opponent is below: intelligently drop through if ground below is safe!
+        const dropChance = Math.abs(dx) < 220
+          ? (difficulty === 'hard' ? 0.24 : (difficulty === 'med' ? 0.14 : 0.05))
+          : (difficulty === 'hard' ? 0.08 : (difficulty === 'med' ? 0.04 : 0.02));
+        if (Math.random() < dropChance && currentPlat && currentPlat.oneWay) {
+          const isHazardBelow = this.isLethalFall(this.player.x, currentPlat.y + currentPlat.h + 15, platforms, hazards, boundaryType);
           if (!isHazardBelow) {
             state.down = true;
             state.jumpJustPressed = true;
@@ -538,10 +548,11 @@ export class BotController {
         }
       }
 
-      // Tactical dash to close gap or evade when on safe terrain
-      // Novice never dashes in combat; Medium occasionally, Hard frequently
-      const dashChance = difficulty === 'hard' ? 0.04 : (difficulty === 'med' ? 0.015 : 0.0);
-      if (!isHesitating && dashChance > 0 && minDistance < 180 && minDistance > 80 && Math.random() < dashChance && !this.isLethalFall(this.player.x + (moveDir * 120), this.player.y, platforms, hazards)) {
+      // Tactical dash to close gap, evade, or slice with Vorpal Dash
+      const hasVorpal = this.player.hasPowerUp('vorpal-dash');
+      const baseDashChance = difficulty === 'hard' ? 0.04 : (difficulty === 'med' ? 0.015 : 0.0);
+      const dashChance = hasVorpal ? Math.max(0.08, baseDashChance * 2.5) : baseDashChance;
+      if (!isHesitating && dashChance > 0 && minDistance < 220 && minDistance > 50 && Math.random() < dashChance && !this.isLethalFall(this.player.x + (moveDir * 120), this.player.y, platforms, hazards, boundaryType)) {
         state.dashJustPressed = true;
         state.dash = true;
       }
@@ -557,9 +568,12 @@ export class BotController {
         state.attack = true;
         this.meleeCooldownTimer = 0.35;
       } else {
-        // Melee attack when in range
+        // Melee attack when in range OR ranged Sword Beam wave
+        const hasSwordBeam = this.player.hasPowerUp('sword-beam');
+        const canSwordBeam = hasSwordBeam && minDistance < 350 && minDistance > 60 && Math.abs(dy) < 60;
         const inMeleeRange = minDistance < 65 && Math.abs(dy) < 38;
-        if (inMeleeRange) {
+
+        if (inMeleeRange || canSwordBeam) {
           if (!this.hasTargetInRange) {
             this.hasTargetInRange = true;
             // Reaction time before swinging: Novices hesitate for ~0.45s before attacking
@@ -580,10 +594,26 @@ export class BotController {
         }
       }
     } else {
-      // Ranged bow combat with lead calculation & inaccuracy
+      // Ranged bow combat with ballistic gravity compensation & lead calculation
       const leadMultiplier = difficulty === 'hard' ? 0.18 : (difficulty === 'med' ? 0.08 : 0.0);
       const leadX = dx + nearestOpponent.vx * leadMultiplier;
-      const leadY = dy + nearestOpponent.vy * leadMultiplier;
+      let targetY = dy + nearestOpponent.vy * leadMultiplier;
+
+      // Ballistic arc compensation: counteract projectile gravity drop!
+      const isRailgun = this.player.hasPowerUp('railgun-piercer');
+      if (!isRailgun) {
+        const estSpeed = this.player.getArrowSpeed(difficulty === 'hard');
+        const estDist = Math.hypot(leadX, dy);
+        const flightTime = estDist / Math.max(100, estSpeed);
+        const arrowGravity = 380; // Projectile.ts standard gravity
+        const dropDistance = 0.5 * arrowGravity * (flightTime * flightTime);
+
+        // Deadly bots compensate 100%, Medium 70%, Easy 20%
+        const compFactor = difficulty === 'hard' ? 1.0 : (difficulty === 'med' ? 0.70 : 0.20);
+        targetY -= dropDistance * compFactor; // Pitch upward to arc directly into opponent!
+      }
+
+      const leadY = targetY;
 
       // Update aim jitter for human-like inaccuracy
       if (this.aimErrorTimer <= 0) {
