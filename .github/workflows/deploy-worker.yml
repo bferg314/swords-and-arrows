@@ -13,6 +13,8 @@ jobs:
   deploy:
     name: Build & Deploy Web Version
     runs-on: ubuntu-latest
+    # The production environment only runs from main, so other branches can't reach the token.
+    environment: production
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
