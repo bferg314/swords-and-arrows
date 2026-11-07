@@ -447,7 +447,7 @@ export class Game {
       // Check collision against players
       if (!proj.isDead && !proj.isStuck) {
         for (const p of this.players) {
-          if (p.isAlive && p.index !== proj.ownerIndex && !p.isInvulnerable) {
+          if (p.isAlive && p.index !== proj.ownerIndex && !p.isInvulnerable && !proj.piercedPlayers.has(p.index)) {
             const hitDist = Math.hypot(p.x - proj.x, p.y - proj.y);
             if (hitDist < 26) {
               // Check if player is parrying
@@ -518,6 +518,12 @@ export class Game {
                     color: '#ff9e00'
                   }));
                 }
+              }
+
+              // Railgun arrows carry on through players, hitting each one once
+              if (proj.isPiercing) {
+                proj.piercedPlayers.add(p.index);
+                continue;
               }
 
               proj.isDead = true;

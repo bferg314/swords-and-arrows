@@ -35,6 +35,8 @@ export class Projectile {
   public isHoming: boolean;
   public isExplosive: boolean;
   public isPiercing: boolean;
+  // Players a piercing arrow has already hit, so it hits each one once
+  public piercedPlayers: Set<number> = new Set();
   public isFrost: boolean;
   public isGrapple: boolean;
   public isShrapnel: boolean;
@@ -270,6 +272,7 @@ export class Projectile {
 
   public reflect(newOwnerIndex: number, speedMultiplier: number = 1.6): void {
     this.ownerIndex = newOwnerIndex;
+    this.piercedPlayers.clear();
     this.vx = -this.vx * speedMultiplier;
     this.vy = -this.vy * speedMultiplier * 0.7;
     this.angle = Math.atan2(this.vy, this.vx);

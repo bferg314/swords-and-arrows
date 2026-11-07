@@ -127,7 +127,7 @@ export const BOW_POWERUPS: PowerUpDefinition[] = [
     category: 'bow',
     icon: '⚡',
     tagline: 'Hyper Velocity',
-    description: 'Fully charged arrows ignore gravity, travel at hyper speed, and pierce platforms.',
+    description: 'Fully charged arrows ignore gravity, travel at hyper speed, and pierce platforms and players.',
     color: '#fee440'
   },
   {
