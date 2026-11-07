@@ -94,6 +94,7 @@ export class UIManager {
 
     document.getElementById('btn-pause-menu')?.addEventListener('click', () => {
       this.game.resume();
+      this.game.state = 'lobby';
       this.showScreen('title');
       this.game.input.resetAllControllerAssignments();
     });
