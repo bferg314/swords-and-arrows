@@ -547,8 +547,9 @@ export class GamepadNavigator {
         }
       }
 
-      // In the warrior lobby: if an unassigned controller presses A or Start, join as human!
-      const isConfirmPress = pA || pStart;
+      // In the warrior lobby: if an unassigned controller presses A, join as human!
+      // Start is reserved for launching the match with the configured slot types.
+      const isConfirmPress = pA;
       const prevJoinPress = this.prevLobbyJoinPress.get(gp.index) ?? false;
       this.prevLobbyJoinPress.set(gp.index, isConfirmPress);
 
@@ -572,8 +573,7 @@ export class GamepadNavigator {
           // allow button A to interact normally with the focused menu control (e.g. cycle CPU difficulty or select color).
           // Only trigger auto-join if:
           // 1) The slot is currently inactive, OR
-          // 2) The cursor is NOT on this slot, OR
-          // 3) The player pressed the START button to join
+          // 2) The cursor is NOT on this slot
           const matchingSlot = gp.index >= 0 && gp.index <= 3 ? gp.index : null;
           const isNavigatingOwnActiveSlot = (
             matchingSlot !== null &&
@@ -581,7 +581,7 @@ export class GamepadNavigator {
             !this.lobbyOnBottomBar &&
             this.lobbySlotIndex === matchingSlot &&
             this.isSlotActive(matchingSlot) &&
-            pA && !pStart
+            pA
           );
 
           if (!isNavigatingOwnActiveSlot) {
@@ -1269,19 +1269,27 @@ export class GamepadNavigator {
       return slot;
     };
 
-    // 1. If this controller has a natural matching slot (0 -> P1, 1 -> P2, 2 -> P3, 3 -> P4):
-    if (gpIndex >= 0 && gpIndex <= 3) {
-      return joinSlot(gpIndex);
-    }
-
-    // 2. Fallback: find first inactive or CPU slot (1, 2, 3, 0)
-    for (const slot of [1, 2, 3, 0] as const) {
+    // A controller joining never takes over a slot that was set to CPU in setup.
+    // Under Steam one physical pad can show up as two gamepads, and the spare one
+    // used to turn P2 into a human (issue #6). Changing a CPU slot is done in the menu.
+    const isCpuSlot = (slot: number): boolean => {
       const slotElem = document.getElementById(`slot-p${slot + 1}`);
       const selectElem = document.getElementById(`p${slot + 1}-type`) as HTMLSelectElement;
       const isActive = slotElem?.classList.contains('active') ?? false;
-      const isCpu = selectElem ? selectElem.value.startsWith('cpu') : false;
+      return isActive && (selectElem ? selectElem.value.startsWith('cpu') : false);
+    };
 
-      if (!isActive || isCpu) {
+    // 1. If this controller has a natural matching slot (0 -> P1, 1 -> P2, 2 -> P3, 3 -> P4):
+    if (gpIndex >= 0 && gpIndex <= 3 && !isCpuSlot(gpIndex)) {
+      return joinSlot(gpIndex);
+    }
+
+    // 2. Fallback: find the first inactive slot (1, 2, 3, 0)
+    for (const slot of [1, 2, 3, 0] as const) {
+      const slotElem = document.getElementById(`slot-p${slot + 1}`);
+      const isActive = slotElem?.classList.contains('active') ?? false;
+
+      if (!isActive) {
         return joinSlot(slot);
       }
     }
