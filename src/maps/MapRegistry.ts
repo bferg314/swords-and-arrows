@@ -210,8 +210,8 @@ export const ARENA_MAPS: ArenaMap[] = [
     spawnPoints: [
       { x: 200, y: 540 },
       { x: 1080, y: 540 },
-      { x: 640, y: 320 },
-      { x: 640, y: 160 }
+      { x: 560, y: 200 },
+      { x: 720, y: 200 }
     ],
     hazards: [
       { x: 620, y: 450, w: 40, h: 100, damage: 1, type: 'laser', active: true }
