@@ -283,6 +283,43 @@ export class BotController {
     return null;
   }
 
+  /**
+   * Chooses the safer edge of a solid platform when the opponent is below.
+   */
+  private findDescentDirection(
+    currentPlat: Platform,
+    platforms: Platform[],
+    hazards: HazardZone[],
+    boundaryType: MapBoundaryType
+  ): number {
+    const exits = [
+      { dir: -1, x: currentPlat.x - 35 },
+      { dir: 1, x: currentPlat.x + currentPlat.w + 35 }
+    ];
+    let bestDir = 0;
+    let bestScore = 99999;
+
+    for (const exit of exits) {
+      if (this.isLethalFall(exit.x, currentPlat.y, platforms, hazards, boundaryType)) continue;
+
+      for (const p of platforms) {
+        if (p === currentPlat || p.crumbleState === 'vanished' || p.hazard || p.y <= currentPlat.y) continue;
+
+        const landingX = Math.max(p.x, Math.min(exit.x, p.x + p.w));
+        const horizontalDistance = Math.abs(landingX - exit.x);
+        if (horizontalDistance > 180) continue;
+
+        const score = horizontalDistance + (p.y - currentPlat.y) * 0.1;
+        if (score < bestScore) {
+          bestScore = score;
+          bestDir = exit.dir;
+        }
+      }
+    }
+
+    return bestDir;
+  }
+
   public generateInput(
     dt: number,
     allPlayers: Player[],
@@ -466,7 +503,7 @@ export class BotController {
         if (minDistance < 100 && this.player.currentWeapon !== 'sword') {
           state.switchWeaponJustPressed = true;
           this.weaponSwitchTimer = switchCooldown;
-        } else if (minDistance > 220 && this.player.currentWeapon !== 'bow') {
+        } else if ((minDistance > 140 || Math.abs(dy) > 60) && this.player.currentWeapon !== 'bow') {
           state.switchWeaponJustPressed = true;
           this.weaponSwitchTimer = switchCooldown;
         }
@@ -474,8 +511,14 @@ export class BotController {
     }
 
     // ================= 4. MOVEMENT & NAVIGATION =================
-    const moveDir = Math.abs(dx) > 40 ? (dx > 0 ? 1 : -1) : 0;
+    let moveDir = Math.abs(dx) > 40 ? (dx > 0 ? 1 : -1) : 0;
     const currentPlat = this.getCurrentPlatform(platforms);
+
+    // A vertically aligned target used to leave bots standing still on separate
+    // platforms. Walk off a safe edge when a solid floor prevents dropping through.
+    if (dy > 65 && this.player.isGrounded && currentPlat && !currentPlat.oneWay && moveDir === 0) {
+      moveDir = this.findDescentDirection(currentPlat, platforms, hazards, boundaryType);
+    }
 
     // Check if airborne and over hazard (immediate emergency recovery)
     const isRecovering = this.handleAirborneHazardRecovery(state, platforms, hazards, boundaryType);
@@ -536,10 +579,7 @@ export class BotController {
         state.jumpJustPressed = true;
       } else if (dy > 65 && this.player.isGrounded) {
         // Opponent is below: intelligently drop through if ground below is safe!
-        const dropChance = Math.abs(dx) < 220
-          ? (difficulty === 'hard' ? 0.24 : (difficulty === 'med' ? 0.14 : 0.05))
-          : (difficulty === 'hard' ? 0.08 : (difficulty === 'med' ? 0.04 : 0.02));
-        if (Math.random() < dropChance && currentPlat && currentPlat.oneWay) {
+        if (currentPlat && currentPlat.oneWay) {
           const isHazardBelow = this.isLethalFall(this.player.x, currentPlat.y + currentPlat.h + 15, platforms, hazards, boundaryType);
           if (!isHazardBelow) {
             state.down = true;

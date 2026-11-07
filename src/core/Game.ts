@@ -46,6 +46,8 @@ export class Game {
 
   // Round flow state
   private roundStateTimer: number = 0;
+  private botStallTimer: number = 0;
+  private botStallHealth: number = 0;
   public roundWinner: Player | null = null;
   public matchWinner: Player | null = null;
 
@@ -157,6 +159,7 @@ export class Game {
     this.projectiles = [];
     this.particles.clear();
     this.camera.reset();
+    this.botStallTimer = 0;
 
     // If map was set to random, rotate map each round for maximum fun!
     if (this.selectedMapId === 'random' && this.roundNumber > 1) {
@@ -180,6 +183,7 @@ export class Game {
       p.lockWeapon = this.matchModifier === 'snipers' ? 'bow' : (this.matchModifier === 'blades' ? 'sword' : null);
       p.resetForRound(sp.x, sp.y, this.roundHp);
     });
+    this.botStallHealth = this.players.reduce((total, p) => total + p.health, 0);
 
     let subText = `FIRST TO ${this.targetWins} WINS`;
     if (this.matchModifier === 'snipers') subText = `🏹 SNIPERS ONLY • TO ${this.targetWins}`;
@@ -469,8 +473,31 @@ export class Game {
       }
     }
 
-    // 5. Check Round End Condition: only 1 or 0 players alive
-    const alivePlayers = this.players.filter(p => p.isAlive);
+    // 5. Break CPU-only stalemates after 30 seconds without damage. If the duel
+    // remains stalled, repeat every 5 seconds until it resolves.
+    let alivePlayers = this.players.filter(p => p.isAlive);
+    if (alivePlayers.length === 2 && alivePlayers.every(p => p.isCpu)) {
+      const totalHealth = alivePlayers.reduce((total, p) => total + p.health, 0);
+      if (totalHealth !== this.botStallHealth) {
+        this.botStallTimer = 0;
+        this.botStallHealth = totalHealth;
+      } else {
+        this.botStallTimer += dt;
+        if (this.botStallTimer >= 30) {
+          for (const p of alivePlayers) {
+            p.takeDamage(1, 0, -180, this.sound, this.particles, undefined, true);
+          }
+          this.botStallTimer = 25;
+          this.botStallHealth = alivePlayers.reduce((total, p) => total + p.health, 0);
+          alivePlayers = this.players.filter(p => p.isAlive);
+        }
+      }
+    } else {
+      this.botStallTimer = 0;
+      this.botStallHealth = alivePlayers.reduce((total, p) => total + p.health, 0);
+    }
+
+    // 6. Check Round End Condition: only 1 or 0 players alive
     if (alivePlayers.length <= 1) {
       this.state = 'round-end';
       this.roundStateTimer = 2.0;
