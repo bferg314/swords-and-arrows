@@ -94,6 +94,7 @@ export class UIManager {
 
     document.getElementById('btn-pause-menu')?.addEventListener('click', () => {
       this.game.resume();
+      this.game.state = 'lobby';
       this.showScreen('title');
       this.game.input.resetAllControllerAssignments();
     });
@@ -377,6 +378,7 @@ export class UIManager {
     this.draftScreen.classList.add('hidden');
     this.podiumScreen.classList.add('hidden');
     this.pauseScreen.classList.add('hidden');
+    this.hudLayer.classList.add('hidden');
 
     if (screen === 'title') this.titleScreen.classList.remove('hidden');
     else if (screen === 'lobby') {
