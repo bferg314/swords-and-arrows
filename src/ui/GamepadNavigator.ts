@@ -215,10 +215,10 @@ export class GamepadNavigator {
           if (code === 'KeyD') isRight = true;
           if (code === 'KeyF' || code === 'Space' || code === 'Enter') isSelect = true;
         } else if (slot === 1) {
-          // P2: ArrowLeft / ArrowRight to move, K / Enter / NumpadEnter to select
+          // P2: ArrowLeft / ArrowRight to move, Comma / Enter / NumpadEnter to select
           if (code === 'ArrowLeft') isLeft = true;
           if (code === 'ArrowRight') isRight = true;
-          if (code === 'KeyK' || code === 'Enter' || code === 'NumpadEnter') isSelect = true;
+          if (code === 'Comma' || code === 'Enter' || code === 'NumpadEnter') isSelect = true;
         } else if (slot === 2) {
           // P3: J / L to move, U / P to select
           if (code === 'KeyJ') isLeft = true;
@@ -1052,7 +1052,7 @@ export class GamepadNavigator {
         if (!this.draftingPlayer.isCpu) {
           const p = this.draftingPlayer;
           const ctrlNum = p.index + 1;
-          const kbHint = p.index === 0 ? 'A/D + Space/F' : (p.index === 1 ? '←/→ + Enter/K' : (p.index === 2 ? 'J/L + U' : 'Num 4/6 + 1'));
+          const kbHint = p.index === 0 ? 'A/D + Space/F' : (p.index === 1 ? '←/→ + Enter/,' : (p.index === 2 ? 'J/L + U' : 'Num 4/6 + 1'));
           this.promptBar.innerHTML = `
             <span style="color:${p.color}; font-weight:800;">🎮 CONTROLLER ${ctrlNum} (${p.name.toUpperCase()}) TURN</span>
             <span><span class="gp-key" style="border:1px solid ${p.color};">PAD / [${kbHint}]</span> Choose</span>

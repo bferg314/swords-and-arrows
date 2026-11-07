@@ -85,10 +85,10 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **Movement** | `W` `A` `S` `D` | `↑` `←` `↓` `→` | `I` `J` `K` `L` | Numpad `8` `4` `5` `6` |
 | **Jump** | `W` / `Space` | `↑` | `I` | Numpad `8` |
-| **Attack** | `F` | `K` | `U` | Numpad `1` |
-| **Parry / Aim** | `G` | `L` | `O` | Numpad `2` |
-| **Swap Weapon** | `R` | `O` | `P` | Numpad `3` |
-| **Dash** | `Left Shift` | `Right Shift` | `Y` | Numpad `0` |
+| **Attack** | `F` | `,` | `U` | Numpad `1` |
+| **Parry / Aim** | `G` | `.` | `P` | Numpad `2` |
+| **Swap Weapon** | `R` | `/` | `Y` | Numpad `3` |
+| **Dash** | `Left Shift` / `E` | `Right Shift` | `H` | Numpad `0` |
 
 ---
 
