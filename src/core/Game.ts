@@ -365,8 +365,20 @@ export class Game {
             // Ricochet check
             if (proj.bouncesLeft > 0) {
               proj.bouncesLeft--;
-              proj.vy = -proj.vy * 1.1;
-              proj.vx *= 1.1;
+              const distLeft = proj.x - plat.x;
+              const distRight = plat.x + plat.w - proj.x;
+              const distTop = proj.y - plat.y;
+              const distBottom = plat.y + plat.h - proj.y;
+
+              if (Math.min(distLeft, distRight) < Math.min(distTop, distBottom)) {
+                proj.vx = -proj.vx * 1.1;
+                proj.vy *= 1.1;
+                proj.x = distLeft < distRight ? plat.x - 1 : plat.x + plat.w + 1;
+              } else {
+                proj.vy = -proj.vy * 1.1;
+                proj.vx *= 1.1;
+                proj.y = distTop < distBottom ? plat.y - 1 : plat.y + plat.h + 1;
+              }
               this.sound.playArrowWallHit();
               this.particles.emitSparks(proj.x, proj.y, 8, proj.color);
             } else if (proj.isExplosive) {
@@ -402,6 +414,25 @@ export class Game {
                 }));
               }
               proj.isDead = true;
+            } else if (proj.isGrapple) {
+              const grappleAngle = Math.atan2(proj.vy, proj.vx);
+              const ownerPlayer = this.players.find(p => p.index === proj.ownerIndex);
+              proj.stick(plat, proj.x, proj.y);
+              this.sound.playArrowWallHit();
+
+              if (ownerPlayer && ownerPlayer.isAlive) {
+                ownerPlayer.x = proj.x - Math.cos(grappleAngle) * 35;
+                ownerPlayer.y = proj.y - Math.sin(grappleAngle) * 35;
+                ownerPlayer.vx = 0;
+                ownerPlayer.vy = -180;
+                ownerPlayer.grantInvulnerability(0.35);
+                this.particles.emitSparks(ownerPlayer.x, ownerPlayer.y, 14, '#52b788');
+                this.particles.emitCombatText(ownerPlayer.x, ownerPlayer.y - 20, 'TETHER!', '#52b788', 14);
+              }
+            } else if (proj.type === 'sword-beam') {
+              proj.isDead = true;
+              this.sound.playArrowWallHit();
+              this.particles.emitSparks(proj.x, proj.y, 8, proj.color);
             } else {
               // Stick in platform
               proj.stick(plat, proj.x, proj.y);
@@ -463,6 +494,30 @@ export class Game {
               if (proj.isExplosive) {
                 this.sound.playExplosion();
                 this.particles.emitExplosion(proj.x, proj.y, 50);
+                for (const blastTarget of this.players) {
+                  if (blastTarget.isAlive) {
+                    const dist = Math.hypot(blastTarget.x - proj.x, blastTarget.y - proj.y);
+                    if (dist < 85) {
+                      const blastDir = Math.atan2(blastTarget.y - proj.y, blastTarget.x - proj.x);
+                      blastTarget.takeDamage(1, Math.cos(blastDir) * 450, Math.sin(blastDir) * 350, this.sound, this.particles);
+                    }
+                  }
+                }
+              } else if (proj.isShrapnel) {
+                this.sound.playExplosion();
+                for (let s = 0; s < 3; s++) {
+                  const sAngle = (s - 1) * 0.4 - Math.PI * 0.5;
+                  this.projectiles.push(new Projectile({
+                    x: proj.x,
+                    y: proj.y,
+                    vx: Math.cos(sAngle) * 550,
+                    vy: Math.sin(sAngle) * 550,
+                    ownerIndex: proj.ownerIndex,
+                    damage: 1,
+                    type: 'shrapnel',
+                    color: '#ff9e00'
+                  }));
+                }
               }
 
               proj.isDead = true;

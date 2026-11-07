@@ -142,10 +142,14 @@ export class Projectile {
           this.vx = -this.vx * 0.85;
           this.x = 22;
         } else {
-          this.isStuck = true;
-          this.x = 20;
-          this.vx = 0;
-          this.vy = 0;
+          if (this.type === 'sword-beam') {
+            this.isDead = true;
+          } else {
+            this.isStuck = true;
+            this.x = 20;
+            this.vx = 0;
+            this.vy = 0;
+          }
         }
       } else if (this.x >= 1260 && this.vx > 0) {
         if (this.bouncesLeft > 0) {
@@ -153,10 +157,14 @@ export class Projectile {
           this.vx = -this.vx * 0.85;
           this.x = 1258;
         } else {
-          this.isStuck = true;
-          this.x = 1260;
-          this.vx = 0;
-          this.vy = 0;
+          if (this.type === 'sword-beam') {
+            this.isDead = true;
+          } else {
+            this.isStuck = true;
+            this.x = 1260;
+            this.vx = 0;
+            this.vy = 0;
+          }
         }
       }
     } else if (boundaryType === 'hazard') {
