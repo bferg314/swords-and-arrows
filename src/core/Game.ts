@@ -144,6 +144,11 @@ export class Game {
     this.camera.addTrauma(0.5);
   }
 
+  public getEffectiveGravityScale(): number {
+    const base = this.currentMap.gravityScale ?? 1.0;
+    return this.matchModifier === 'moon-gravity' ? base * 0.65 : base;
+  }
+
   public startRound(): void {
     this.state = 'playing';
     this.roundWinner = null;
@@ -175,10 +180,6 @@ export class Game {
       p.lockWeapon = this.matchModifier === 'snipers' ? 'bow' : (this.matchModifier === 'blades' ? 'sword' : null);
       p.resetForRound(sp.x, sp.y, this.roundHp);
     });
-
-    if (this.matchModifier === 'moon-gravity') {
-      this.currentMap.gravityScale = (this.currentMap.gravityScale ?? 1.0) * 0.65;
-    }
 
     let subText = `FIRST TO ${this.targetWins} WINS`;
     if (this.matchModifier === 'snipers') subText = `🏹 SNIPERS ONLY • TO ${this.targetWins}`;
@@ -286,7 +287,7 @@ export class Game {
 
     // 3. Update Players
     const activePlatforms = this.currentMap.platforms.filter(p => p.crumbleState !== 'vanished');
-    const gravScale = this.currentMap.gravityScale ?? 1.0;
+    const gravScale = this.getEffectiveGravityScale();
 
     for (const p of this.players) {
       if (p.index === 0) {
@@ -618,7 +619,7 @@ export class Game {
 
     // 5. Render Players
     const activePlats = this.currentMap.platforms.filter(p => p.crumbleState !== 'vanished');
-    const grav = this.currentMap.gravityScale ?? 1.0;
+    const grav = this.getEffectiveGravityScale();
     for (const p of this.players) {
       p.render(ctx, activePlats, grav, this.players, this.currentMap.boundaryType || 'solid');
     }
