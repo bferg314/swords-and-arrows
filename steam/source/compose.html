@@ -1,0 +1,42 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Outfit:wght@600;800&family=Cinzel:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;box-sizing:border-box}
+html,body{background:transparent;overflow:hidden}
+.frame{position:relative;overflow:hidden;background:#090b10}
+.scene{position:absolute;inset:0;background:url(scene.png) no-repeat;background-size:cover}
+.title{font-family:'Cinzel Decorative',Georgia,serif;font-weight:900;letter-spacing:.04em;line-height:1.02;
+  background:linear-gradient(180deg,#fff 10%,#ffd166 60%,#b8860b 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  text-align:center;white-space:nowrap}
+.fx{filter:drop-shadow(0 4px 0 rgba(40,20,0,.6)) drop-shadow(0 6px 18px rgba(0,0,0,.6))}
+.fx.glow{filter:drop-shadow(0 4px 0 rgba(40,20,0,.6)) drop-shadow(0 0 18px rgba(255,209,102,.3))}
+.amp{font-family:'Cinzel',serif;font-weight:400;-webkit-text-fill-color:#ff4d6d;color:#ff4d6d}
+.sub{font-family:'Outfit',sans-serif;font-weight:800;color:#ffd166;letter-spacing:.35em;text-transform:uppercase;text-align:center;
+  text-shadow:0 2px 8px rgba(0,0,0,.8)}
+</style></head><body>
+<script>
+const mode=new URLSearchParams(location.search).get('m');
+const B=document.body;
+const T=(size,stack,cls='')=>`<div class="fx ${cls}"><div class="title" style="font-size:${size}px">${stack?'SWORDS<br><span class="amp">&amp;</span><br>ARROWS':'SWORDS <span class="amp">&amp;</span> ARROWS'}</div></div>`;
+if(mode==='hero'){ // 1920x620, no logo: Steam draws the logo over it
+  B.innerHTML=`<div class="frame" style="width:1920px;height:620px"><div class="scene" style="background-position:50% 58%"></div>
+  <div style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(4,12,30,.55),rgba(4,12,30,0) 45%),linear-gradient(0deg,rgba(4,12,30,.45),rgba(4,12,30,0) 40%)"></div></div>`;
+}
+if(mode==='logo'){ // transparent
+  B.innerHTML=`<div style="width:1280px;height:400px;display:flex;flex-direction:column;justify-content:center;gap:10px">
+  <div class="sub" style="font-size:28px">Couch Multiplayer Arena</div>${T(100,false,'glow')}</div>`;
+}
+if(mode==='wide'){ // 920x430
+  B.innerHTML=`<div class="frame" style="width:920px;height:430px;background:#040a1c"><div class="scene" style="top:60px;bottom:auto;height:518px;background-size:100% 100%;transform:scale(1.02)"></div>
+  <div style="position:absolute;inset:0;background:linear-gradient(180deg,#040a1c 0%,#040a1c 16%,rgba(4,10,28,.72) 32%,rgba(4,10,28,0) 54%)"></div>
+  <div style="position:absolute;left:0;right:0;top:26px;display:flex;flex-direction:column;gap:6px">
+  <div class="sub" style="font-size:17px">Couch Multiplayer Arena</div>${T(74)}</div></div>`;
+}
+if(mode==='portrait'){ // 600x900
+  B.innerHTML=`<div class="frame" style="width:600px;height:900px;background:#05112b"><div class="scene" style="top:330px;background-size:auto 128%;background-position:86% 36%"></div>
+  <div style="position:absolute;inset:0;background:linear-gradient(180deg,#05112b 0%,#05112b 38%,rgba(5,17,43,0) 54%,rgba(5,17,43,0) 84%,rgba(5,17,43,.7) 100%)"></div>
+  <div style="position:absolute;left:0;right:0;top:46px;display:flex;flex-direction:column;gap:10px">
+  <div class="sub" style="font-size:15px">Couch Multiplayer Arena</div>${T(84,true)}</div>
+  <div class="sub" style="position:absolute;left:0;right:0;bottom:34px;font-size:15px;letter-spacing:.22em;color:#f0f4f8">2&ndash;4 Players</div></div>`;
+}
+</script></body></html>
