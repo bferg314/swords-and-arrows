@@ -15,6 +15,13 @@ export interface PlayerStats {
   damageDealt: number;
 }
 
+interface FlamePatch {
+  x: number;
+  y: number;
+  life: number;
+  hitPlayers: Set<number>;
+}
+
 export class Player {
   public index: number; // 0, 1, 2, 3
   public name: string;
@@ -81,6 +88,7 @@ export class Player {
   public parryTimer: number = 0;
   private parryCooldown: number = 0;
   public isDownThrusting: boolean = false;
+  private flamePatches: FlamePatch[] = [];
 
   // Bow Attack State
   public isDrawingBow: boolean = false;
@@ -159,6 +167,7 @@ export class Player {
     this.jumpBufferTimer = 0;
     this.coyoteTimer = 0;
     this.isDownThrusting = false;
+    this.flamePatches = [];
     this.isGrounded = false;
     this.isWallSliding = false;
     this.isTouchingWallLeft = false;
@@ -209,6 +218,7 @@ export class Player {
     boundaryType: MapBoundaryType = 'solid',
     gravityMultiplier: number = 1.0
   ): void {
+    this.updateFlamePatches(dt, sound, particles, allPlayers);
     if (!this.isAlive) return;
 
     this.animTimer += dt;
@@ -337,6 +347,10 @@ export class Player {
     }
 
     // ================= 2. DASH MECHANIC =================
+    const dashStartX = this.x;
+    const dashStartY = this.y;
+    let vorpalDashActive = false;
+
     if (input.dashJustPressed && this.dashCooldown <= 0 && !this.isDashing) {
       this.isDashing = true;
       const dashDuration = this.hasPowerUp('vorpal-dash') ? 0.24 : 0.18;
@@ -352,21 +366,10 @@ export class Player {
 
       sound.playDash();
       particles.emitDust(this.x, this.y + this.height * 0.5, 8);
-
-      // Vorpal shadow trail damage check
-      if (this.hasPowerUp('vorpal-dash')) {
-        for (const other of allPlayers) {
-          if (other.index !== this.index && other.isAlive && !other.isInvulnerable) {
-            const dist = Math.hypot(other.x - this.x, other.y - this.y);
-            if (dist < 50) {
-              other.takeDamage(1, Math.sign(this.vx) * 350, -200, sound, particles, this);
-            }
-          }
-        }
-      }
     }
 
     if (this.isDashing) {
+      vorpalDashActive = this.hasPowerUp('vorpal-dash');
       this.dashTimer -= dt;
       // Emit shadow particles while dashing
       if (Math.random() < 0.6) {
@@ -475,6 +478,27 @@ export class Player {
     // ================= 5. ENVIRONMENT & PLATFORM COLLISIONS =================
     this.updateCollisions(dt, platforms, hazards, sound, particles, boundaryType);
 
+    // Vorpal shadow trail damage check across this frame's dash movement
+    if (vorpalDashActive) {
+      const dashDx = this.x - dashStartX;
+      const dashDy = this.y - dashStartY;
+      const dashLengthSq = dashDx * dashDx + dashDy * dashDy;
+      for (const other of allPlayers) {
+        if (other.index !== this.index && other.isAlive && !other.isInvulnerable) {
+          const projection = dashLengthSq > 0
+            ? Math.max(0, Math.min(1, ((other.x - dashStartX) * dashDx + (other.y - dashStartY) * dashDy) / dashLengthSq))
+            : 0;
+          const closestX = dashStartX + dashDx * projection;
+          const closestY = dashStartY + dashDy * projection;
+          const dist = Math.hypot(other.x - closestX, other.y - closestY);
+          if (dist < 50) {
+            const dashDirection = Math.sign(dashDx) || (this.facingLeft ? -1 : 1);
+            other.takeDamage(1, dashDirection * 350, -200, sound, particles, this);
+          }
+        }
+      }
+    }
+
     // Fall into abyss
     if (this.y > 750) {
       this.dieFromAbyss(sound, particles);
@@ -502,6 +526,8 @@ export class Player {
     projectiles: Projectile[],
     allPlayers: Player[]
   ): void {
+    let shouldCheckSwordHit = false;
+
     // 1. Parry Shield Activation
     if (input.parryJustPressed && this.parryCooldown <= 0 && !this.isAttacking) {
       this.isParrying = true;
@@ -542,6 +568,7 @@ export class Player {
     // 2. Sword Attack Trigger
     if (input.attackJustPressed && this.attackCooldown <= 0 && !this.isParrying) {
       this.isAttacking = true;
+      shouldCheckSwordHit = true;
 
       // Aerial Down-thrust check
       const isDownThrust = !this.isGrounded && input.down;
@@ -652,7 +679,10 @@ export class Player {
 
       // Flame Brand terrain hazard
       if (this.hasPowerUp('flame-brand') && this.isGrounded) {
-        particles.emitFirePatch(this.x + (this.facingLeft ? -30 : 30), this.y + this.height * 0.5, 6);
+        const patchX = this.x + (this.facingLeft ? -30 : 30);
+        const patchY = this.y + this.height * 0.5;
+        particles.emitFirePatch(patchX, patchY, 6);
+        this.flamePatches.push({ x: patchX, y: patchY, life: 2.0, hitPlayers: new Set() });
       }
 
       // Cyclone Whirlwind vacuum
@@ -669,14 +699,19 @@ export class Player {
         }
       }
 
+    }
+
+    if (shouldCheckSwordHit || this.isDownThrusting) {
       // Strike hit detection
       const isFinisher = this.comboStep === 3;
       const hitReach = this.hasPowerUp('titan-cleaver') ? (isFinisher ? 78 : 65) : (isFinisher ? 52 : 42);
-      const hitX = this.x + (this.facingLeft ? -hitReach * 0.5 : hitReach * 0.5);
-      const hitY = this.y;
+      const hitX = this.isDownThrusting ? this.x : this.x + (this.facingLeft ? -hitReach * 0.5 : hitReach * 0.5);
+      const hitY = this.isDownThrusting ? this.y + this.height * 0.5 : this.y;
 
       for (const other of allPlayers) {
-        if (other.index !== this.index && other.isAlive) {
+        // While a down-thrust carries on, only targets that can take damage count,
+        // so a dive through someone's i-frames does not replay the hit every frame.
+        if (other.index !== this.index && other.isAlive && (shouldCheckSwordHit || !other.isInvulnerable)) {
           const dx = Math.abs(other.x - hitX);
           const dy = Math.abs(other.y - hitY);
           if (dx < hitReach && dy < 38) {
@@ -692,6 +727,7 @@ export class Player {
               particles.emitSparks(hitX, hitY, 18, '#ffd166');
               particles.emitCombatText(this.x, this.y - 20, 'STAGGERED!', '#ef476f', 15);
               particles.emitCombatText(other.x, other.y - 20, 'PARRIED!', '#ffd166', 15);
+              this.isDownThrusting = false;
               other.stats.parries++;
             } else {
               // Direct hit!
@@ -720,13 +756,14 @@ export class Player {
                 this.squashY = 1.3;
               }
 
+              const swordHitLanded = !other.isInvulnerable;
               other.takeDamage(totalDamage, kbX, kbSpeedY, sound, particles, this);
 
               // Thunder Rapier lightning strike
-              if (this.hasPowerUp('thunder-rapier')) {
+              if (this.hasPowerUp('thunder-rapier') && swordHitLanded) {
                 particles.emitLightningStrike(other.x, other.y - 400, other.x, other.y);
                 sound.playExplosion();
-                other.takeDamage(1, 0, -150, sound, particles, this);
+                other.takeDamage(1, 0, -150, sound, particles, this, true);
               }
 
               // Vampiric Edge
@@ -748,6 +785,42 @@ export class Player {
       this.attackTimer -= dt;
       if (this.attackTimer <= 0) {
         this.isAttacking = false;
+      }
+    }
+  }
+
+  private updateFlamePatches(
+    dt: number,
+    sound: SoundEngine,
+    particles: ParticleSystem,
+    allPlayers: Player[]
+  ): void {
+    for (let i = this.flamePatches.length - 1; i >= 0; i--) {
+      const patch = this.flamePatches[i];
+      patch.life -= dt;
+      if (patch.life <= 0) {
+        this.flamePatches.splice(i, 1);
+        continue;
+      }
+
+      if (Math.random() < dt * 18) {
+        particles.emitFirePatch(patch.x, patch.y, 1);
+      }
+
+      for (const other of allPlayers) {
+        if (
+          other.index !== this.index &&
+          other.isAlive &&
+          !other.isInvulnerable &&
+          !patch.hitPlayers.has(other.index) &&
+          Math.abs(other.x - patch.x) < 36 &&
+          other.y + other.height * 0.5 > patch.y - 28 &&
+          other.y - other.height * 0.5 < patch.y + 12
+        ) {
+          patch.hitPlayers.add(other.index);
+          const knockbackX = Math.sign(other.x - patch.x) * 180;
+          other.takeDamage(1, knockbackX, -180, sound, particles, this);
+        }
       }
     }
   }
