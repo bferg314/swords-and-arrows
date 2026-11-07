@@ -215,7 +215,7 @@ export class UIManager {
           textElem.textContent = `${count} Gamepad${count > 1 ? 's' : ''} Connected (Couch Co-op Ready!)`;
           textElem.style.color = '#06d6a0';
         } else {
-          textElem.textContent = 'Keyboard Ready (P1: WASD+F/G/R • P2: Arrows+K/L/O • Gamepads Supported)';
+          textElem.textContent = 'Keyboard Ready (P1: WASD+F/G/R • P2: Arrows+,/./slash • Gamepads Supported)';
           textElem.style.color = '#94a3b8';
         }
       }

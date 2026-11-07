@@ -346,22 +346,22 @@ export class InputManager {
       state.dash = state.dash || this.keysDown.has('ShiftLeft') || this.keysDown.has('KeyE');
       state.dashJustPressed = state.dashJustPressed || this.keysJustPressed.has('ShiftLeft') || this.keysJustPressed.has('KeyE');
     } else if (slot === 1) {
-      // P2: Arrow keys, K, L, O, RightShift
+      // P2: Arrow keys, Comma (attack), Period (parry), Slash (swap), Right Shift (dash)
       state.left = state.left || this.keysDown.has('ArrowLeft');
       state.right = state.right || this.keysDown.has('ArrowRight');
       state.up = state.up || this.keysDown.has('ArrowUp');
       state.down = state.down || this.keysDown.has('ArrowDown');
       state.jump = state.jump || this.keysDown.has('ArrowUp');
       state.jumpJustPressed = state.jumpJustPressed || this.keysJustPressed.has('ArrowUp');
-      state.attack = state.attack || this.keysDown.has('KeyK');
-      state.attackJustPressed = state.attackJustPressed || this.keysJustPressed.has('KeyK');
-      state.attackJustReleased = state.attackJustReleased || this.keysJustReleased.has('KeyK');
-      state.parry = state.parry || this.keysDown.has('KeyL');
-      state.parryJustPressed = state.parryJustPressed || this.keysJustPressed.has('KeyL');
-      state.switchWeapon = state.switchWeapon || this.keysDown.has('KeyO') || this.keysDown.has('KeyI');
-      state.switchWeaponJustPressed = state.switchWeaponJustPressed || this.keysJustPressed.has('KeyO') || this.keysJustPressed.has('KeyI');
-      state.dash = state.dash || this.keysDown.has('ShiftRight') || this.keysDown.has('Slash');
-      state.dashJustPressed = state.dashJustPressed || this.keysJustPressed.has('ShiftRight') || this.keysJustPressed.has('Slash');
+      state.attack = state.attack || this.keysDown.has('Comma');
+      state.attackJustPressed = state.attackJustPressed || this.keysJustPressed.has('Comma');
+      state.attackJustReleased = state.attackJustReleased || this.keysJustReleased.has('Comma');
+      state.parry = state.parry || this.keysDown.has('Period');
+      state.parryJustPressed = state.parryJustPressed || this.keysJustPressed.has('Period');
+      state.switchWeapon = state.switchWeapon || this.keysDown.has('Slash');
+      state.switchWeaponJustPressed = state.switchWeaponJustPressed || this.keysJustPressed.has('Slash');
+      state.dash = state.dash || this.keysDown.has('ShiftRight');
+      state.dashJustPressed = state.dashJustPressed || this.keysJustPressed.has('ShiftRight');
     } else if (slot === 2) {
       // P3: IJKL, U, P, Y, H
       state.left = state.left || this.keysDown.has('KeyJ');
@@ -384,7 +384,7 @@ export class InputManager {
       state.left = state.left || this.keysDown.has('Numpad4');
       state.right = state.right || this.keysDown.has('Numpad6');
       state.up = state.up || this.keysDown.has('Numpad8');
-      state.down = state.down || this.keysDown.has('Numpad5') || this.keysDown.has('Numpad2');
+      state.down = state.down || this.keysDown.has('Numpad5');
       state.jump = state.jump || this.keysDown.has('Numpad8');
       state.jumpJustPressed = state.jumpJustPressed || this.keysJustPressed.has('Numpad8');
       state.attack = state.attack || this.keysDown.has('Numpad1');
