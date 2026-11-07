@@ -696,7 +696,7 @@ export class UIManager {
       const card = document.getElementById(`${slotId}-card`);
       if (!card) return;
 
-      const p = game.players[index];
+      const p = game.players.find(player => player.index === index);
       if (!p) {
         card.classList.add('hidden');
         return;

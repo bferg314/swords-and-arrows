@@ -165,6 +165,22 @@ export class InputManager {
       return;
     }
 
+    this.isSingleHumanMatch = humanSlots.length <= 1;
+
+    // Solo play vs bots: assign the primary controller (or first available gamepad)
+    // so Controller 1 is not left idle when the human player is not in slot 0.
+    if (humanSlots.length === 1) {
+      const soloSlot = humanSlots[0];
+      const primaryGp = (this.primaryGamepadIndex !== null
+        ? validGamepads.find(g => g.index === this.primaryGamepadIndex)
+        : null) || validGamepads[0];
+      this.assignedGamepads.set(soloSlot, primaryGp.index);
+      if (this.primaryGamepadIndex === null) {
+        this.primaryGamepadIndex = primaryGp.index;
+      }
+      return;
+    }
+
     const usedIndices = new Set<number>();
     const assignedSlots = new Set<PlayerSlot>();
 
@@ -177,7 +193,7 @@ export class InputManager {
         this.assignedGamepads.set(slot, exactGp.index);
         usedIndices.add(exactGp.index);
         assignedSlots.add(slot);
-        if (slot === 0 && this.primaryGamepadIndex === null) {
+        if (this.primaryGamepadIndex === null) {
           this.primaryGamepadIndex = exactGp.index;
         }
       }
@@ -204,7 +220,7 @@ export class InputManager {
           this.assignedGamepads.set(slot, nextAvailable.index);
           usedIndices.add(nextAvailable.index);
           assignedSlots.add(slot);
-          if (slot === 0 && this.primaryGamepadIndex === null) {
+          if (this.primaryGamepadIndex === null) {
             this.primaryGamepadIndex = nextAvailable.index;
           }
         } else {
@@ -257,8 +273,8 @@ export class InputManager {
     }
 
     // 2. Single-human match (Human vs Bots):
-    // In a solo match, Player 1 should be controllable by the primary gamepad or first gamepad
-    if (this.isSingleHumanMatch && slot === 0) {
+    // In a solo match, the active human should be controllable by the primary gamepad or first gamepad
+    if (this.isSingleHumanMatch && (this.assignedGamepads.has(slot) || (this.assignedGamepads.size === 0 && slot === 0))) {
       if (this.primaryGamepadIndex !== null) {
         const primary = validGamepads.find(g => g.index === this.primaryGamepadIndex);
         if (primary) return primary;
