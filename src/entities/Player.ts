@@ -511,7 +511,7 @@ export class Player {
 
     // Arrow collection from platforms
     for (const proj of projectiles) {
-      if (proj.isStuck && !proj.isDead && this.quiverAmmo < this.maxQuiverAmmo) {
+      if (proj.type !== 'sword-beam' && proj.isStuck && !proj.isDead && this.quiverAmmo < this.maxQuiverAmmo) {
         const dist = Math.hypot(proj.x - this.x, proj.y - this.y);
         if (dist < 35) {
           proj.isDead = true;
