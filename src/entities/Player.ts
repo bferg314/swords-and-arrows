@@ -31,6 +31,8 @@ export class Player {
   public height: number = 42;
   public facingLeft: boolean = false;
   public isGrounded: boolean = false;
+  public isOnSlippery: boolean = false;
+  public isOnWater: boolean = false;
   public isTouchingWallLeft: boolean = false;
   public isTouchingWallRight: boolean = false;
   public isWallSliding: boolean = false;
@@ -160,6 +162,8 @@ export class Player {
     this.coyoteTimer = 0;
     this.isDownThrusting = false;
     this.isGrounded = false;
+    this.isOnSlippery = false;
+    this.isOnWater = false;
     this.isWallSliding = false;
     this.isTouchingWallLeft = false;
     this.isTouchingWallRight = false;
@@ -395,7 +399,7 @@ export class Player {
         this.facingLeft = moveDir < 0;
       }
 
-      const baseSpeed = 310 * this.speedMultiplier;
+      const baseSpeed = 310 * this.speedMultiplier * (this.isOnWater ? 0.75 : 1.0);
       const speedMod = (this.speedSurgeTimer > 0 ? 1.4 : 1.0);
       const targetSpeed = moveDir * baseSpeed * speedMod;
 
@@ -403,7 +407,8 @@ export class Player {
       if (moveDir !== 0) {
         this.vx += Math.sign(targetSpeed - this.vx) * Math.min(Math.abs(targetSpeed - this.vx), accel * dt);
       } else {
-        const friction = this.isGrounded ? 1600 : 600;
+        // Ice keeps most of a player's momentum: a full-speed slide runs about 190 px
+        const friction = this.isOnSlippery ? 250 : (this.isGrounded ? 1600 : 600);
         if (Math.abs(this.vx) < friction * dt) {
           this.vx = 0;
         } else {
@@ -445,7 +450,7 @@ export class Player {
       // Jump execution
       if (this.jumpBufferTimer > 0) {
         if (this.coyoteTimer > 0 || this.jumpsRemaining > 0) {
-          this.vy = -540;
+          this.vy = this.isOnWater ? -640 : -540;
           this.squashX = 0.82;
           this.squashY = 1.26;
           this.jumpBufferTimer = 0;
@@ -942,6 +947,8 @@ export class Player {
     boundaryType: MapBoundaryType = 'solid'
   ): void {
     this.isGrounded = false;
+    this.isOnSlippery = false;
+    this.isOnWater = false;
     this.isTouchingWallLeft = false;
     this.isTouchingWallRight = false;
     this.isWallSliding = false;
@@ -1134,6 +1141,16 @@ export class Player {
           if (plat.crumble && plat.crumbleState === 'solid') {
             plat.crumbleState = 'shaking';
             plat.crumbleTimer = 0.6;
+          }
+
+          // Slippery ice platform
+          if (plat.slippery) {
+            this.isOnSlippery = true;
+          }
+
+          // Flooded water platform
+          if (plat.water) {
+            this.isOnWater = true;
           }
 
           break;
